@@ -11,6 +11,7 @@ from typing import Dict, Any
 
 from api.routes import AutoPilotAPI
 from models.core_models import MetricData, MetricType
+from services.scheduler import SchedulerService
 from datetime import datetime
 
 
@@ -48,6 +49,10 @@ def main():
     try:
         # Initialize API
         api = AutoPilotAPI()
+
+        # Start Background Scheduler
+        scheduler = SchedulerService(api)
+        scheduler.start()
         
         # Example usage
         print("\n" + "=" * 60)
@@ -157,6 +162,8 @@ if __name__ == '__main__':
             user_input = input("autopilot> ").strip()
             
             if user_input.lower() in ['exit', 'quit', 'q']:
+                print("Stopping scheduler...")
+                scheduler.stop()
                 print("Goodbye!")
                 break
             
