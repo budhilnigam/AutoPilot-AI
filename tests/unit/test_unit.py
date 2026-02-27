@@ -21,6 +21,7 @@ class TestObservabilityAgent:
         agent = ObservabilityAgent()
         
         # Create metrics with one clear anomaly
+        # Use more baseline points to stabilize statistics
         metrics = [
             MetricData(
                 metric_name="CPUUtilization",
@@ -28,29 +29,26 @@ class TestObservabilityAgent:
                 value=50.0,
                 unit="Percent",
                 timestamp=datetime.utcnow().isoformat()
-            ),
-            MetricData(
-                metric_name="CPUUtilization",
-                metric_type=MetricType.CPU,
-                value=52.0,
-                unit="Percent",
-                timestamp=datetime.utcnow().isoformat()
-            ),
-            MetricData(
-                metric_name="CPUUtilization",
-                metric_type=MetricType.CPU,
-                value=51.0,
-                unit="Percent",
-                timestamp=datetime.utcnow().isoformat()
-            ),
+            ) for _ in range(10)  # 10 normal points
+        ]
+        
+        # Add slight variance
+        for i, m in enumerate(metrics):
+            if i % 2 == 0:
+                m.value += 1.0
+            else:
+                m.value -= 1.0
+                
+        # Add anomaly
+        metrics.append(
             MetricData(
                 metric_name="CPUUtilization",
                 metric_type=MetricType.CPU,
                 value=95.0,  # Anomaly
                 unit="Percent",
                 timestamp=datetime.utcnow().isoformat()
-            ),
-        ]
+            )
+        )
         
         anomalies = agent.detect_anomalies(metrics, sigma_threshold=2.0)
         
