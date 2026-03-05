@@ -1,0 +1,40 @@
+# Production dependencies for AutoPilot AI
+# Generated from pyproject.toml [project.dependencies]
+#
+# Recommended install (keeps the package importable from source):
+#   pip install -e .
+#
+# Flat install (CI, Docker, etc.):
+#   pip install -r requirements.txt
+
+# AWS
+boto3>=1.34.0
+botocore>=1.34.0
+
+# Pydantic ecosystem
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+
+# Web framework
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+
+# Resilience
+tenacity>=8.2.3
+
+# Logging
+structlog>=24.1.0
+
+# GitHub integration
+PyGithub>=2.2.0
+
+# Async HTTP
+httpx>=0.27.0
+
+# Rate limiting
+slowapi>=0.1.9
+
+# Utilities
+python-dotenv>=1.0.1
+jinja2>=3.1.3
