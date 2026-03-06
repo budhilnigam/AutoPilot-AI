@@ -27,11 +27,19 @@ if [[ ! -f "$ROOT/.env" ]]; then
 fi
 
 # ── Activate venv ─────────────────────────────────────────────────────────────
-if [[ -f "$ROOT/venv/bin/activate" ]]; then
-    source "$ROOT/venv/bin/activate"
-    success "Python venv activated"
-else
-    warn "No venv found at $ROOT/venv — using system Python"
+VENV_CANDIDATES=("envn" "venv" "env" ".venv")
+VENV_ACTIVATED=0
+for v in "${VENV_CANDIDATES[@]}"; do
+    if [[ -f "$ROOT/$v/bin/activate" ]]; then
+        source "$ROOT/$v/bin/activate"
+        success "Python venv activated: $v"
+        VENV_ACTIVATED=1
+        break
+    fi
+done
+
+if [[ "$VENV_ACTIVATED" -eq 0 ]]; then
+    warn "No virtual environment found in: ${VENV_CANDIDATES[*]} — using system Python"
 fi
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
@@ -52,7 +60,7 @@ esac
 start_backend() {
     info "Starting FastAPI backend on http://0.0.0.0:8000"
     info "  API docs : http://localhost:8000/docs"
-    info "  Health   : http://localhost:8000/health"
+    info "  Health   : http://localhost:8000/api/health"
     echo ""
     cd "$ROOT"
     exec uvicorn autopilot_ai.api.main:app \
@@ -87,6 +95,19 @@ build_frontend() {
     success "Frontend built → frontend/dist/"
 }
 
+cleanup_backend() {
+    # Ensure uvicorn --reload parent and worker are both stopped.
+    if [[ -n "${BACKEND_PID:-}" ]]; then
+        if kill -0 "$BACKEND_PID" 2>/dev/null; then
+            kill -TERM -- "-$BACKEND_PID" 2>/dev/null || kill -TERM "$BACKEND_PID" 2>/dev/null || true
+            # Give processes a moment to exit gracefully before forcing.
+            sleep 0.5
+            kill -KILL -- "-$BACKEND_PID" 2>/dev/null || kill -KILL "$BACKEND_PID" 2>/dev/null || true
+        fi
+        wait "$BACKEND_PID" 2>/dev/null || true
+    fi
+}
+
 # ── Execute ────────────────────────────────────────────────────────────────────
 
 case "$MODE" in
@@ -101,15 +122,28 @@ case "$MODE" in
     full)
         info "Starting FULL stack (backend + frontend dev server)"
         echo ""
-        # Run backend in background, frontend in foreground
-        uvicorn autopilot_ai.api.main:app \
-            --host 0.0.0.0 --port 8000 \
-            --reload --log-level warning &
+        # Run backend in its own process group so Ctrl+C can stop reloader + worker.
+        if command -v setsid >/dev/null 2>&1; then
+            setsid uvicorn autopilot_ai.api.main:app \
+                --host 0.0.0.0 --port 8000 \
+                --reload --log-level warning &
+        else
+            uvicorn autopilot_ai.api.main:app \
+                --host 0.0.0.0 --port 8000 \
+                --reload --log-level warning &
+        fi
         BACKEND_PID=$!
-        # Kill backend cleanly when this script exits
-        trap "kill $BACKEND_PID 2>/dev/null; wait $BACKEND_PID 2>/dev/null" EXIT
-        info "Backend PID $BACKEND_PID — listening on :8000"
-        sleep 1
+        # Stop backend cleanly (and force if needed) when this script exits.
+        trap cleanup_backend EXIT INT TERM
+        info "Backend PID $BACKEND_PID — waiting for readiness..."
+        # Wait for backend to be ready (max 10 seconds)
+        for i in {1..20}; do
+            if curl -sf http://localhost:8000/api/health >/dev/null 2>&1; then
+                success "Backend ready!"
+                break
+            fi
+            sleep 0.5
+        done
         start_frontend
         ;;
 
