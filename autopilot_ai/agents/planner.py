@@ -50,6 +50,7 @@ from autopilot_ai.core.logging import get_logger
 from autopilot_ai.integrations.aws.bedrock import bedrock_client
 from autopilot_ai.models.responses import AgentResponse, QueryResponse, ResponseStatus
 from autopilot_ai.models.tasks import AgentType, Priority, Task, TaskType
+from autopilot_ai.services.metrics_service import metrics_service
 
 logger = get_logger(__name__)
 
@@ -330,6 +331,91 @@ Respond with JSON array only."""
 
     # ── Task execution ────────────────────────────────────────────────────
 
+    async def _enrich_plan_with_metrics(
+        self,
+        plan: dict,
+        parent_task: Task,
+    ) -> None:
+        """
+        Enrich observability agent plans with real CloudWatch metrics.
+        
+        Modifies plan["parameters"] in-place to include fetched metrics.
+        """
+        agent_type_str = plan.get("agent_type", "")
+        task_type_str = plan.get("task_type", "")
+        
+        # Only enrich observability tasks that need metrics
+        if agent_type_str != "observability":
+            return
+        
+        if task_type_str not in ["analyze_metrics", "detect_anomalies"]:
+            return
+        
+        # Extract query and context for metric fetching
+        query: str = str(parent_task.parameters.get("query", ""))
+        context: dict = parent_task.parameters.get("context", {})  # type: ignore[assignment]
+        
+        # Get lookback window from plan parameters or use default
+        lookback_minutes = int(plan.get("parameters", {}).get("timerange_minutes", 60))
+        
+        logger.info(
+            "planner_fetching_metrics",
+            task_type=task_type_str,
+            lookback_minutes=lookback_minutes,
+        )
+        
+        try:
+            # Fetch metrics from CloudWatch
+            metrics = await metrics_service.fetch_metrics_for_query(
+                query=query,
+                context=context,
+                lookback_minutes=lookback_minutes,
+            )
+            
+            if metrics:
+                # Serialize MetricData objects to dicts for the agent
+                metrics_serialized = [
+                    {
+                        "metric_name": m.metric_name,
+                        "namespace": m.namespace,
+                        "dimensions": m.dimensions,
+                        "datapoints": [
+                            {"timestamp": dp.timestamp, "value": dp.value}
+                            for dp in m.datapoints
+                        ],
+                        "statistic": m.statistic,
+                        "period_seconds": m.period_seconds,
+                        "unit": m.unit,
+                        "latest_value": m.latest_value,
+                        "mean": m.mean,
+                    }
+                    for m in metrics
+                ]
+                
+                # Add metrics to plan parameters
+                if "parameters" not in plan:
+                    plan["parameters"] = {}
+                plan["parameters"]["metrics"] = metrics_serialized
+                
+                logger.info(
+                    "planner_metrics_enriched",
+                    count=len(metrics),
+                    task_type=task_type_str,
+                )
+            else:
+                logger.warning(
+                    "planner_no_metrics_found",
+                    query=query[:100],
+                    task_type=task_type_str,
+                )
+        except Exception as e:
+            logger.error(
+                "planner_metric_fetch_failed",
+                error=str(e),
+                task_type=task_type_str,
+            )
+            # Continue without metrics rather than failing the whole query
+
     async def _execute_plan(
         self,
         plan: dict,
@@ -337,6 +423,9 @@ Respond with JSON array only."""
         query_id: str,
     ) -> AgentResponse:
         """Build a Task from a plan dict and dispatch it to the right agent."""
+        # Enrich observability plans with real metrics before execution
+        await self._enrich_plan_with_metrics(plan, parent_task)
+        
         agent_type_str: str = plan.get("agent_type", "")
         task_type_str: str = plan.get("task_type", "")
 
