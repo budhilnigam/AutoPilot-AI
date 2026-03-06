@@ -509,7 +509,14 @@ Respond with JSON array only."""
                     {"action": rec.action, "benefit": rec.expected_benefit}
                     for rec in ins.recommendations
                 ],
-                "cost_impact_inr": ins.cost_impact.monthly_inr if ins.cost_impact else None,
+                "cost_impact_inr": max(
+                    (
+                        rec.cost_impact.monthly_inr
+                        for rec in ins.recommendations
+                        if rec.cost_impact is not None
+                    ),
+                    default=None,
+                ),
             }
             for r in responses
             for ins in r.insights

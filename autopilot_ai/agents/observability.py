@@ -170,14 +170,18 @@ class ObservabilityAgent(BaseAgent):
             return self._partial(task, error_message="No metrics provided")
 
         # Build a compact metric summary for the prompt
-        metric_summary = "\n".join(
-            f"- {m.metric_name} [{m.namespace}]: "
-            f"latest={m.latest_value:.2f} {m.unit}, "
-            f"mean={m.mean:.2f if m.mean is not None else 'N/A'}, "
-            f"dimensions={m.dimensions}"
-            for m in metrics
-            if m.latest_value is not None
-        )
+        metric_lines: list[str] = []
+        for m in metrics:
+            if m.latest_value is None:
+                continue
+            mean_text = f"{m.mean:.2f}" if m.mean is not None else "N/A"
+            metric_lines.append(
+                f"- {m.metric_name} [{m.namespace}]: "
+                f"latest={m.latest_value:.2f} {m.unit}, "
+                f"mean={mean_text}, "
+                f"dimensions={m.dimensions}"
+            )
+        metric_summary = "\n".join(metric_lines)
 
         # KB context retrieval
         kb_results = await knowledge_base.query_context(

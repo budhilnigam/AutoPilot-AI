@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
 import time
 import uuid
 from datetime import datetime
@@ -44,6 +45,9 @@ from autopilot_ai.models.domain import Configuration, ConfigType
 from autopilot_ai.models.metrics import MetricData
 
 logger = get_logger(__name__)
+
+# Bedrock KB IDs are short alphanumeric strings (e.g. "AB12CD34EF").
+_KB_ID_PATTERN = re.compile(r"^[0-9A-Za-z]{1,10}$")
 
 # S3 key prefixes — KB data source must be configured to crawl these prefixes
 _S3_PREFIX_CONFIGS = "kb/configurations/"
@@ -278,18 +282,26 @@ class KnowledgeBaseService:
         if not kb_id:
             logger.warning("kb_not_configured", query=query[:80])
             return []
+        if not _KB_ID_PATTERN.fullmatch(kb_id):
+            logger.warning("kb_invalid_id", kb_id=kb_id, query=query[:80])
+            return []
 
         loop = asyncio.get_running_loop()
-        results = await loop.run_in_executor(
-            None,
-            partial(
-                self._retrieve_sync,
-                query,
-                kb_id,
-                max_results,
-                settings.kb_similarity_threshold,
-            ),
-        )
+        try:
+            results = await loop.run_in_executor(
+                None,
+                partial(
+                    self._retrieve_sync,
+                    query,
+                    kb_id,
+                    max_results,
+                    settings.kb_similarity_threshold,
+                ),
+            )
+        except IntegrationError as e:
+            # KB retrieval should never block core agent analysis.
+            logger.warning("kb_query_failed", kb_id=kb_id, error=str(e), query=query[:80])
+            return []
 
         # Client-side config_type filter if requested
         if config_types:
