@@ -252,7 +252,7 @@ class BedrockClient:
     
     def parse_json_response(self, response_content: str) -> Dict[str, Any]:
         """
-        Parse JSON from Claude response.
+        Parse JSON from LLM response.
         
         Handles common formatting issues:
         - Markdown code blocks
@@ -260,7 +260,7 @@ class BedrockClient:
         - Partial JSON
         
         Args:
-            response_content: Raw response from Claude
+            response_content: Raw response from LLM
             
         Returns:
             Parsed JSON as dict
@@ -305,7 +305,7 @@ class BedrockClient:
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {e}")
             logger.debug(f"Raw content: {response_content[:500]}")
-            raise ValueError(f"Invalid JSON in Claude response: {e}")
+            raise ValueError(f"Invalid JSON in LLM response: {e}")
     
     def invoke_with_json_response(
         self,
@@ -315,7 +315,7 @@ class BedrockClient:
         **kwargs
     ) -> Dict[str, Any]:
         """
-        Invoke Claude and parse JSON response.
+        Invoke LLM and parse JSON response.
         
         Convenience method that combines invocation and JSON parsing.
         

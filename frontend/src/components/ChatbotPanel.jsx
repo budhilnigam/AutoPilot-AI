@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
+import rehypeSanitize from 'rehype-sanitize'
 import { 
   Send, 
   Loader2, 
@@ -8,7 +12,8 @@ import {
   Sparkles,
   TrendingUp,
   AlertTriangle,
-  Lightbulb
+  Lightbulb,
+  Brain
 } from 'lucide-react'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -19,6 +24,41 @@ const severityColors = {
   medium: 'bg-yellow-100 border-yellow-300 text-yellow-800',
   low: 'bg-blue-100 border-blue-300 text-blue-800',
   info: 'bg-gray-100 border-gray-300 text-gray-800',
+}
+
+// Markdown Renderer Component
+const MarkdownRenderer = ({ content, className = '' }) => {
+  return (
+    <div className={`markdown-content ${className}`}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeRaw, rehypeSanitize]}
+        components={{
+          // Custom styling for markdown elements
+          h1: ({node, ...props}) => <h1 className="text-2xl font-bold mt-4 mb-2" {...props} />,
+          h2: ({node, ...props}) => <h2 className="text-xl font-bold mt-3 mb-2" {...props} />,
+          h3: ({node, ...props}) => <h3 className="text-lg font-semibold mt-2 mb-1" {...props} />,
+          p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+          ul: ({node, ...props}) => <ul className="list-disc list-inside mb-2 space-y-1" {...props} />,
+          ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-2 space-y-1" {...props} />,
+          li: ({node, ...props}) => <li className="ml-2" {...props} />,
+          code: ({node, inline, ...props}) => 
+            inline 
+              ? <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono" {...props} />
+              : <code className="block bg-gray-900 text-gray-100 p-3 rounded-lg overflow-x-auto font-mono text-sm my-2" {...props} />,
+          pre: ({node, ...props}) => <pre className="my-2" {...props} />,
+          blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-gray-300 pl-4 italic my-2" {...props} />,
+          a: ({node, ...props}) => <a className="text-blue-600 hover:text-blue-800 underline" target="_blank" rel="noopener noreferrer" {...props} />,
+          table: ({node, ...props}) => <div className="overflow-x-auto my-2"><table className="min-w-full border border-gray-300" {...props} /></div>,
+          th: ({node, ...props}) => <th className="border border-gray-300 px-3 py-2 bg-gray-100 font-semibold text-left" {...props} />,
+          td: ({node, ...props}) => <td className="border border-gray-300 px-3 py-2" {...props} />,
+          hr: ({node, ...props}) => <hr className="my-4 border-gray-300" {...props} />,
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  )
 }
 
 function ChatbotPanel() {
@@ -135,15 +175,25 @@ function ChatbotPanel() {
                   : 'bg-white border border-gray-200 shadow-sm' 
                 : 'bg-blue-600 text-white'
             }`}>
-              <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+              {/* Main Response */}
+              <div className="text-sm">
+                <MarkdownRenderer 
+                  content={message.content} 
+                  className={isBot ? 'text-gray-900' : 'text-white markdown-white'} 
+                />
+              </div>
 
+              {/* Thinking Process (Separate from Response) */}
               {message.thinking && (
-                <details className="mt-3 rounded border border-gray-200 bg-gray-50">
-                  <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-gray-700">
-                    Thinking
+                <details className="mt-3 rounded border border-gray-300 bg-gray-50">
+                  <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-gray-700 flex items-center hover:bg-gray-100">
+                    <Brain className="w-4 h-4 mr-2" />
+                    Thinking Process
                   </summary>
-                  <div className="border-t border-gray-200 px-3 py-2">
-                    <p className="text-xs whitespace-pre-wrap text-gray-700">{message.thinking}</p>
+                  <div className="border-t border-gray-200 px-3 py-2 bg-white">
+                    <div className="text-xs text-gray-700">
+                      <MarkdownRenderer content={message.thinking} className="text-gray-700" />
+                    </div>
                   </div>
                 </details>
               )}

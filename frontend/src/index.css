@@ -30,4 +30,68 @@
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background-color: rgba(156, 163, 175, 0.7);
   }
+
+  /* Markdown styling for white text in user messages */
+  .markdown-white h1,
+  .markdown-white h2,
+  .markdown-white h3,
+  .markdown-white h4,
+  .markdown-white h5,
+  .markdown-white h6 {
+    @apply text-white;
+  }
+
+  .markdown-white p {
+    @apply text-white;
+  }
+
+  .markdown-white code {
+    @apply bg-blue-700 text-white;
+  }
+
+  .markdown-white pre code {
+    @apply bg-blue-900 text-white;
+  }
+
+  .markdown-white a {
+    @apply text-blue-200 hover:text-blue-100;
+  }
+
+  .markdown-white strong {
+    @apply text-white font-bold;
+  }
+
+  .markdown-white em {
+    @apply text-white italic;
+  }
+
+  .markdown-white blockquote {
+    @apply border-blue-400 text-white;
+  }
+
+  .markdown-white ul,
+  .markdown-white ol {
+    @apply text-white;
+  }
+
+  .markdown-white li {
+    @apply text-white;
+  }
+
+  /* General markdown content styling */
+  .markdown-content {
+    @apply leading-relaxed;
+  }
+
+  .markdown-content pre {
+    @apply overflow-x-auto;
+  }
+
+  .markdown-content img {
+    @apply max-w-full h-auto rounded;
+  }
+
+  .markdown-content hr {
+    @apply my-4;
+  }
 }
