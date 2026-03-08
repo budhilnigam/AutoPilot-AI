@@ -93,6 +93,23 @@ function HealthCheckPanel() {
 
   const HealthItem = ({ item }) => {
     const Icon = iconMap[item.service] || Activity
+    const hasResponseTime = item.response_time_ms !== null && item.response_time_ms !== undefined
+
+    const formatResponseTime = (value) => {
+      const numericValue = Number(value)
+      if (!Number.isFinite(numericValue)) {
+        return null
+      }
+
+      // Health checks can complete in under 1ms; display that explicitly instead of "0".
+      if (numericValue > 0 && numericValue < 1) {
+        return '<1ms'
+      }
+
+      return `${Math.round(numericValue)}ms`
+    }
+
+    const responseTimeLabel = hasResponseTime ? formatResponseTime(item.response_time_ms) : null
     
     return (
       <div className={`p-3 border rounded-lg ${getStatusColor(item.status)} transition-all hover:shadow-md`}>
@@ -107,9 +124,9 @@ function HealthCheckPanel() {
                 {getStatusIcon(item.status)}
               </div>
               <p className="text-xs text-gray-600 mt-1">{item.message}</p>
-              {item.response_time_ms && (
+              {responseTimeLabel && (
                 <p className="text-xs text-gray-500 mt-1">
-                  {item.response_time_ms.toFixed(0)}ms
+                  {responseTimeLabel}
                 </p>
               )}
             </div>
