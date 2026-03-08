@@ -177,15 +177,11 @@ async def health_check():
 
 @app.get("/api/health/agents", response_model=List[HealthCheckResponse])
 async def health_check_agents():
-    """Check health of all 6 agents"""
+    """Check health of active agents"""
     
     agents_to_check = [
         ("Planner Agent", autopilot_api.planner_agent),
-        ("Observability Agent", autopilot_api.observability_agent),
-        ("Infrastructure Agent", autopilot_api.infra_agent),
-        ("Database Agent", autopilot_api.db_agent),
-        ("Cost Agent", autopilot_api.cost_agent),
-        ("CI/CD Agent", autopilot_api.cicd_agent),
+        ("Unified Agent", autopilot_api.unified_agent),
     ]
     
     results = []

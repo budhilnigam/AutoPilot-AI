@@ -56,74 +56,20 @@ class PlannerAgent:
         self.knowledge_base = knowledge_base
         self.agent_type = AgentType.PLANNER
         
-        # Registry of available agents
+        # Single-agent mode: route all tasks to the unified agent.
         self.agent_capabilities = {
-            AgentType.OBSERVABILITY: AgentCapability(
-                agent_type=AgentType.OBSERVABILITY,
+            AgentType.UNIFIED: AgentCapability(
+                agent_type=AgentType.UNIFIED,
                 capabilities=[
-                    "metric interpretation",
-                    "anomaly detection",
-                    "bottleneck attribution",
-                    "semantic insights",
-                    "performance analysis"
+                    "aws observability analysis",
+                    "infrastructure guidance",
+                    "database guidance",
+                    "cost insights",
+                    "ci/cd guidance",
+                    "cross-domain synthesis",
                 ],
-                keywords=[
-                    "metrics", "cpu", "memory", "latency", "throughput",
-                    "anomaly", "spike", "performance", "slow"
-                ]
-            ),
-            AgentType.INFRA: AgentCapability(
-                agent_type=AgentType.INFRA,
-                capabilities=[
-                    "docker configuration analysis",
-                    "ECS task analysis",
-                    "infrastructure drift detection",
-                    "configuration optimization"
-                ],
-                keywords=[
-                    "docker", "dockerfile", "ecs", "container", "terraform",
-                    "infrastructure", "configuration", "drift"
-                ]
-            ),
-            AgentType.DB: AgentCapability(
-                agent_type=AgentType.DB,
-                capabilities=[
-                    "query plan analysis",
-                    "index recommendations",
-                    "database optimization",
-                    "schema analysis"
-                ],
-                keywords=[
-                    "database", "postgres", "mysql", "redis", "query",
-                    "index", "slow query", "sql", "schema"
-                ]
-            ),
-            AgentType.COST: AgentCapability(
-                agent_type=AgentType.COST,
-                capabilities=[
-                    "cost optimization",
-                    "pricing analysis",
-                    "right-sizing",
-                    "cost projection"
-                ],
-                keywords=[
-                    "cost", "price", "billing", "aws cost", "expensive",
-                    "savings", "optimization", "budget", "inr"
-                ]
-            ),
-            AgentType.CICD: AgentCapability(
-                agent_type=AgentType.CICD,
-                capabilities=[
-                    "build time analysis",
-                    "CI/CD regression detection",
-                    "deployment tracking",
-                    "build optimization"
-                ],
-                keywords=[
-                    "cicd", "build", "github actions", "deployment",
-                    "pipeline", "workflow", "commit", "build time"
-                ]
-            ),
+                keywords=[],
+            )
         }
         
         # Agent instance registry (will be populated by dependency injection)
@@ -216,27 +162,23 @@ class PlannerAgent:
         Returns:
             Execution plan (list of agent invocations)
         """
-        query_lower = query.lower()
-        
-        # Simple keyword-based routing (can be enhanced with LLM-based routing)
-        plan = []
-        
-        for agent_type, capability in self.agent_capabilities.items():
-            # Check if any keywords match
-            if any(keyword in query_lower for keyword in capability.keywords):
-                plan.append({
-                    'agent': agent_type,
-                    'priority': 1,  # Can be enhanced
-                    'reason': f"Query matches {agent_type.value} keywords"
-                })
-        
-        # If no agents matched, use LLM to determine routing
-        if not plan:
+        # Single-agent execution plan.
+        if AgentType.UNIFIED in self.agents:
+            plan = [{
+                'agent': AgentType.UNIFIED,
+                'priority': 1,
+                'reason': 'Single-agent mode'
+            }]
+        elif AgentType.OBSERVABILITY in self.agents:
+            # Backward compatibility fallback if unified agent is not registered.
+            plan = [{
+                'agent': AgentType.OBSERVABILITY,
+                'priority': 1,
+                'reason': 'Single-agent fallback mode'
+            }]
+        else:
             plan = self._llm_based_routing(query, context)
-        
-        # Sort by priority
-        plan.sort(key=lambda x: x['priority'])
-        
+
         logger.info(f"Execution plan: {[p['agent'].value for p in plan]}")
         return plan
     
@@ -246,22 +188,15 @@ class PlannerAgent:
         context: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Use LLM to determine which agents to invoke"""
-        
-        system_prompt = """You are a task router for a multi-agent AI SRE system.
 
-Available agents:
-- observability: Metric analysis, anomaly detection, performance insights
-- infra: Docker/ECS configuration analysis, infrastructure drift
-- db: Database query analysis, index recommendations
-- cost: Cost optimization, pricing analysis
-- cicd: Build time analysis, CI/CD regression detection
+        system_prompt = """You are a task router for a single-agent AI SRE system.
 
-Determine which agent(s) should handle the query.
+Always route the query to the unified agent.
 
 Return JSON:
 {
-  "agents": ["agent1", "agent2"],
-  "reasoning": "why these agents"
+    "agents": ["unified"],
+    "reasoning": "single-agent mode"
 }"""
         
         user_prompt = f"""Query: {query}
@@ -291,13 +226,20 @@ Which agent(s) should handle this query?"""
                 except ValueError:
                     logger.warning(f"Unknown agent type: {agent_name}")
             
+            if not plan:
+                return [{
+                    'agent': AgentType.UNIFIED,
+                    'priority': 1,
+                    'reason': 'Single-agent fallback'
+                }]
+
             return plan
             
         except Exception as e:
             logger.error(f"LLM routing failed: {e}")
-            # Fallback to observability agent
+            # Fallback to unified agent
             return [{
-                'agent': AgentType.OBSERVABILITY,
+                'agent': AgentType.UNIFIED,
                 'priority': 1,
                 'reason': 'Fallback routing'
             }]
@@ -351,7 +293,7 @@ Which agent(s) should handle this query?"""
                         metrics=context['metrics'],
                         context=task_context
                     )
-                elif agent_type == AgentType.OBSERVABILITY and hasattr(agent, 'analyze_with_dynamic_tools'):
+                elif agent_type in (AgentType.OBSERVABILITY, AgentType.UNIFIED) and hasattr(agent, 'analyze_with_dynamic_tools'):
                     response = agent.analyze_with_dynamic_tools(
                         task_id=task_id,
                         user_query=query,
@@ -412,25 +354,52 @@ Which agent(s) should handle this query?"""
         # Deduplicate and prioritize
         unique_recommendations = list(set(recommendations))
 
-        if all_insights:
-            top_insights = [insight.summary for insight in all_insights[:3] if insight.summary]
-            summary = "\n".join([f"- {text}" for text in top_insights])
-        elif responses:
-            failed_agents = [
-                response.agent_type.value
-                for response in responses
-                if response.status == TaskStatus.FAILED
-            ]
-            if failed_agents:
-                summary = (
-                    "I could not complete this request because agent execution failed for: "
-                    + ", ".join(failed_agents)
-                    + "."
-                )
+        # Build summary from agent response data, not from insight summaries  
+        summary = None
+        
+        # Try to get actual response text from agent data
+        for response in responses:
+            if response.status != TaskStatus.FAILED and response.data:
+                # Check for full_response in data
+                if isinstance(response.data, dict):
+                    full_response = response.data.get('full_response')
+                    if full_response:
+                        summary = full_response
+                        break
+                    # Try answer field
+                    answer = response.data.get('answer')
+                    if answer:
+                        summary = answer
+                        break
+        
+        # Fallback: create a brief intro summary without duplicating insights
+        if not summary:
+            if all_insights:
+                # Get the primary agent type
+                primary_agent_type = responses[0].agent_type.value if responses else 'system'
+                insight_count = len(all_insights)
+                
+                # Create a brief intro that doesn't duplicate insight content
+                if insight_count == 1:
+                    summary = f"Completed {primary_agent_type} analysis. See detailed insight below."
+                else:
+                    summary = f"Completed {primary_agent_type} analysis. Found {insight_count} items (see details below)."
+            elif responses:
+                failed_agents = [
+                    response.agent_type.value
+                    for response in responses
+                    if response.status == TaskStatus.FAILED
+                ]
+                if failed_agents:
+                    summary = (
+                        "I could not complete this request because agent execution failed for: "
+                        + ", ".join(failed_agents)
+                        + "."
+                    )
+                else:
+                    summary = "I could not find actionable results for this request."
             else:
-                summary = "I could not find actionable results for this request."
-        else:
-            summary = "No agent was selected to handle this request."
+                summary = "No agent was selected to handle this request."
         
         return {
             'summary': summary,

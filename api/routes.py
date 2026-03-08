@@ -11,11 +11,7 @@ from datetime import datetime
 from models.core_models import MetricData, MetricType, Configuration, BuildData, QueryPattern
 from models.agent_protocol import AgentType
 from agents.planner_agent import PlannerAgent
-from agents.observability_agent import ObservabilityAgent
-from agents.infra_agent import InfraAgent
-from agents.db_agent import DBAgent
-from agents.cost_agent import CostAgent
-from agents.cicd_agent import CICDAgent
+from agents.unified_agent import UnifiedAgent
 from services.bedrock_client import BedrockClient
 from services.knowledge_base_factory import KnowledgeBaseInterface
 from services.cloudwatch_client import CloudWatchClient
@@ -50,34 +46,19 @@ class AutoPilotAPI:
         self.github_client = GitHubClient()
         self.tool_generator = ToolGenerator()
         
-        # Initialize agents
-        self.observability_agent = ObservabilityAgent(
+        # Initialize unified single agent
+        self.unified_agent = UnifiedAgent(
             bedrock_client=self.bedrock_client,
             knowledge_base=self.knowledge_base,
             cloudwatch_client=self.cloudwatch_client
         )
-        
-        self.infra_agent = InfraAgent(
-            bedrock_client=self.bedrock_client,
-            knowledge_base=self.knowledge_base
-        )
-        
-        self.db_agent = DBAgent(
-            bedrock_client=self.bedrock_client,
-            knowledge_base=self.knowledge_base
-        )
-        
-        self.cost_agent = CostAgent(
-            bedrock_client=self.bedrock_client,
-            knowledge_base=self.knowledge_base,
-            billing_client=self.billing_client
-        )
-        
-        self.cicd_agent = CICDAgent(
-            bedrock_client=self.bedrock_client,
-            knowledge_base=self.knowledge_base,
-            github_client=self.github_client
-        )
+
+        # Legacy agent slots retained for backward-compatible health checks.
+        self.observability_agent = None
+        self.infra_agent = None
+        self.db_agent = None
+        self.cost_agent = None
+        self.cicd_agent = None
         
         # Initialize Planner Agent and register specialized agents
         self.planner_agent = PlannerAgent(
@@ -85,11 +66,7 @@ class AutoPilotAPI:
             knowledge_base=self.knowledge_base
         )
         
-        self.planner_agent.register_agent(AgentType.OBSERVABILITY, self.observability_agent)
-        self.planner_agent.register_agent(AgentType.INFRA, self.infra_agent)
-        self.planner_agent.register_agent(AgentType.DB, self.db_agent)
-        self.planner_agent.register_agent(AgentType.COST, self.cost_agent)
-        self.planner_agent.register_agent(AgentType.CICD, self.cicd_agent)
+        self.planner_agent.register_agent(AgentType.UNIFIED, self.unified_agent)
         
         logger.info("AutoPilot AI API initialized successfully")
     

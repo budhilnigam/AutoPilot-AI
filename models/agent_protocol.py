@@ -14,6 +14,7 @@ from datetime import datetime
 class AgentType(str, Enum):
     """Types of agents in the system"""
     PLANNER = "planner"
+    UNIFIED = "unified"
     OBSERVABILITY = "observability"
     INFRA = "infra"
     DB = "db"

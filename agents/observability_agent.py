@@ -263,19 +263,8 @@ Provide actionable observability guidance and next checks."""
                 return AgentResponse(
                     agent_type=self.agent_type,
                     task_id=task_id,
-                    status=TaskStatus.SUCCESS,
-                    insights=[
-                        Insight(
-                            summary=fallback_text,
-                            severity=Severity.MEDIUM,
-                            business_impact="Returned best-effort guidance because dynamic tool execution failed",
-                            confidence_score=0.55,
-                            recommendations=[
-                                "Check Bedrock model capability for tool calling",
-                                "Verify IAM permissions for CloudWatch/Logs APIs",
-                            ],
-                        )
-                    ],
+                    status=TaskStatus.PARTIAL,
+                    insights=[],
                     data={
                         'full_response': fallback_text,
                         'tool_error': str(e),

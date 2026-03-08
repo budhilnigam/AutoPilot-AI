@@ -1,16 +1,14 @@
 """
 AutoPilotAI Agents Module
 
-Contains all specialized AI agents:
-- Planner Agent: Orchestrates multi-agent workflows
-- Observability Agent: Metric interpretation and anomaly detection
-- Infra Agent: Infrastructure configuration analysis
-- DB Agent: Database performance optimization
-- Cost Agent: Infrastructure cost optimization
-- CICD Agent: CI/CD performance monitoring
+Contains active and legacy AI agents:
+- Planner Agent: Orchestrates agent workflows
+- Unified Agent: Single strong all-domain agent
+- Legacy specialized agents are kept for backward compatibility
 """
 
 from .planner_agent import PlannerAgent
+from .unified_agent import UnifiedAgent
 from .observability_agent import ObservabilityAgent
 from .infra_agent import InfraAgent
 from .db_agent import DBAgent
@@ -19,6 +17,7 @@ from .cicd_agent import CICDAgent
 
 __all__ = [
     'PlannerAgent',
+    'UnifiedAgent',
     'ObservabilityAgent',
     'InfraAgent',
     'DBAgent',
