@@ -16,6 +16,16 @@ _ROOT_DIR = Path(__file__).resolve().parent
 load_dotenv(_ROOT_DIR / '.env')
 
 
+def _parse_cors_origins(raw_origins: str) -> list[str]:
+    """Parse comma-separated origins and normalize trailing slashes."""
+    origins: list[str] = []
+    for origin in raw_origins.split(','):
+        normalized = origin.strip().rstrip('/')
+        if normalized:
+            origins.append(normalized)
+    return origins
+
+
 class Config:
     """Centralized configuration class"""
     
@@ -84,10 +94,17 @@ class Config:
     API_HOST: str = os.getenv('API_HOST', '0.0.0.0')
     API_PORT: int = int(os.getenv('API_PORT', '8000'))
     ENABLE_CORS: bool = os.getenv('ENABLE_CORS', 'true').lower() == 'true'
-    CORS_ORIGINS: list = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://localhost:5173').split(',')
+    CORS_ORIGINS: list[str] = _parse_cors_origins(
+        os.getenv(
+            'CORS_ORIGINS',
+            'http://localhost:3000,http://localhost:5173,https://autopilot-ai-team-ragnar.netlify.app'
+        )
+    )
+    # Allows all Netlify deploy URLs (production + preview) for development workflows.
+    CORS_ORIGIN_REGEX: str = os.getenv('CORS_ORIGIN_REGEX', r'^https://.*\.netlify\.app$')
     
     # ========== Frontend Settings ==========
-    FRONTEND_URL: str = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+    FRONTEND_URL: str = os.getenv('FRONTEND_URL', 'http://localhost:5173,https://autopilot-ai-team-ragnar.netlify.app/')
     
     # ========== AWS SDK for Bedrock Agents ==========
     BEDROCK_AGENT_ID: Optional[str] = os.getenv('BEDROCK_AGENT_ID')
