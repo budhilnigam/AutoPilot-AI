@@ -91,6 +91,20 @@ function ChatbotPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  // Extract reasoning from content
+  const extractReasoning = (content) => {
+    const reasoningRegex = /<reasoning>(.*?)<\/reasoning>/is
+    const match = content.match(reasoningRegex)
+    
+    if (match) {
+      const reasoning = match[1].trim()
+      const cleanedContent = content.replace(reasoningRegex, '').trim()
+      return { reasoning, cleanedContent }
+    }
+    
+    return { reasoning: null, cleanedContent: content }
+  }
+
   const sendMessage = async (message) => {
     // Use optional chaining to safely check message, fallback to inputMessage
     const userMessage = message || inputMessage
@@ -112,10 +126,14 @@ function ChatbotPanel() {
         message: userMessage,
       })
 
+      // Extract reasoning from response content
+      const { reasoning, cleanedContent } = extractReasoning(response.data.response)
+
       const botMessage = {
         id: Date.now() + 1,
         type: 'bot',
-        content: response.data.response,
+        content: cleanedContent,
+        reasoning: reasoning,
         thinking: response.data.thinking,
         insights: response.data.insights,
         recommendations: response.data.recommendations,
@@ -175,6 +193,21 @@ function ChatbotPanel() {
                   : 'bg-white border border-gray-200 shadow-sm' 
                 : 'bg-blue-600 text-white'
             }`}>
+              {/* Reasoning Process (Extracted from content) */}
+              {message.reasoning && (
+                <details className="mb-3 rounded border border-purple-300 bg-purple-50">
+                  <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-purple-700 flex items-center hover:bg-purple-100">
+                    <Brain className="w-4 h-4 mr-2" />
+                    Reasoning
+                  </summary>
+                  <div className="border-t border-purple-200 px-3 py-2 bg-white">
+                    <div className="text-xs text-gray-700">
+                      <MarkdownRenderer content={message.reasoning} className="text-gray-700" />
+                    </div>
+                  </div>
+                </details>
+              )}
+
               {/* Main Response */}
               <div className="text-sm">
                 <MarkdownRenderer 
