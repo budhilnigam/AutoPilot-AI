@@ -81,13 +81,13 @@ function HealthCheckPanel() {
   const getStatusColor = (status) => {
     switch (status) {
       case 'healthy':
-        return 'border-green-200 bg-green-50'
+        return 'border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/40'
       case 'degraded':
-        return 'border-yellow-200 bg-yellow-50'
+        return 'border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/40'
       case 'unhealthy':
-        return 'border-red-200 bg-red-50'
+        return 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40'
       default:
-        return 'border-gray-200 bg-gray-50'
+        return 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60'
     }
   }
 
@@ -112,20 +112,20 @@ function HealthCheckPanel() {
     const responseTimeLabel = hasResponseTime ? formatResponseTime(item.response_time_ms) : null
     
     return (
-      <div className={`p-3 border rounded-lg ${getStatusColor(item.status)} transition-all hover:shadow-md`}>
+      <div className={`rounded-lg border p-3 transition-all hover:shadow-md ${getStatusColor(item.status)}`}>
         <div className="flex items-start justify-between">
           <div className="flex items-start space-x-2 flex-1">
-            <Icon className="w-4 h-4 mt-0.5 text-gray-600" />
+            <Icon className="mt-0.5 h-4 w-4 text-slate-600 dark:text-slate-300" />
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-medium text-gray-900 truncate">
+                <h4 className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                   {item.service}
                 </h4>
                 {getStatusIcon(item.status)}
               </div>
-              <p className="text-xs text-gray-600 mt-1">{item.message}</p>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{item.message}</p>
               {responseTimeLabel && (
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   {responseTimeLabel}
                 </p>
               )}
@@ -137,23 +137,23 @@ function HealthCheckPanel() {
   }
 
   return (
-    <div className="p-4 h-full flex flex-col">
+    <div className="flex h-full flex-col p-4">
       {/* Header */}
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-bold text-gray-900">System Health</h2>
+          <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">System Health</h2>
           <button
             onClick={fetchHealthData}
             disabled={loading}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+            className="rounded-lg p-2 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800"
             title="Refresh"
           >
-            <RefreshCw className={`w-4 h-4 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 text-slate-600 dark:text-slate-300 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
         
         {lastUpdate && (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             Last updated: {lastUpdate.toLocaleTimeString()}
           </p>
         )}
@@ -165,7 +165,7 @@ function HealthCheckPanel() {
             onChange={(e) => setAutoRefresh(e.target.checked)}
             className="rounded text-blue-600"
           />
-          <span className="text-xs text-gray-600">Auto-refresh (5 min)</span>
+          <span className="text-xs text-slate-600 dark:text-slate-300">Auto-refresh (5 min)</span>
         </label>
       </div>
 
@@ -173,7 +173,7 @@ function HealthCheckPanel() {
       <div className="flex-1 overflow-y-auto scrollbar-thin space-y-6">
         {/* Agents Section */}
         <div>
-          <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
+          <h3 className="mb-3 flex items-center text-sm font-semibold text-slate-700 dark:text-slate-200">
             <Activity className="w-4 h-4 mr-2" />
             AI Agents ({agentHealth.length})
           </h3>
@@ -186,7 +186,7 @@ function HealthCheckPanel() {
 
         {/* Services Section */}
         <div>
-          <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
+          <h3 className="mb-3 flex items-center text-sm font-semibold text-slate-700 dark:text-slate-200">
             <Server className="w-4 h-4 mr-2" />
             Services ({serviceHealth.length})
           </h3>
@@ -199,25 +199,25 @@ function HealthCheckPanel() {
       </div>
 
       {/* Summary Stats */}
-      <div className="mt-4 pt-4 border-t border-gray-200">
+      <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
         <div className="grid grid-cols-3 gap-2 text-center">
           <div>
             <div className="text-lg font-bold text-green-600">
               {[...agentHealth, ...serviceHealth].filter(h => h.status === 'healthy').length}
             </div>
-            <div className="text-xs text-gray-600">Healthy</div>
+            <div className="text-xs text-slate-600 dark:text-slate-300">Healthy</div>
           </div>
           <div>
             <div className="text-lg font-bold text-yellow-600">
               {[...agentHealth, ...serviceHealth].filter(h => h.status === 'degraded').length}
             </div>
-            <div className="text-xs text-gray-600">Degraded</div>
+            <div className="text-xs text-slate-600 dark:text-slate-300">Degraded</div>
           </div>
           <div>
             <div className="text-lg font-bold text-red-600">
               {[...agentHealth, ...serviceHealth].filter(h => h.status === 'unhealthy').length}
             </div>
-            <div className="text-xs text-gray-600">Unhealthy</div>
+            <div className="text-xs text-slate-600 dark:text-slate-300">Unhealthy</div>
           </div>
         </div>
       </div>

@@ -19,11 +19,11 @@ import {
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const severityColors = {
-  critical: 'bg-red-100 border-red-300 text-red-800',
-  high: 'bg-orange-100 border-orange-300 text-orange-800',
-  medium: 'bg-yellow-100 border-yellow-300 text-yellow-800',
-  low: 'bg-blue-100 border-blue-300 text-blue-800',
-  info: 'bg-gray-100 border-gray-300 text-gray-800',
+  critical: 'bg-red-100 border-red-300 text-red-800 dark:bg-red-950/50 dark:border-red-800 dark:text-red-200',
+  high: 'bg-orange-100 border-orange-300 text-orange-800 dark:bg-orange-950/50 dark:border-orange-800 dark:text-orange-200',
+  medium: 'bg-yellow-100 border-yellow-300 text-yellow-800 dark:bg-yellow-950/50 dark:border-yellow-800 dark:text-yellow-200',
+  low: 'bg-blue-100 border-blue-300 text-blue-800 dark:bg-blue-950/50 dark:border-blue-800 dark:text-blue-200',
+  info: 'bg-gray-100 border-gray-300 text-gray-800 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200',
 }
 
 // Markdown Renderer Component
@@ -44,15 +44,15 @@ const MarkdownRenderer = ({ content, className = '' }) => {
           li: ({node, ...props}) => <li className="ml-2" {...props} />,
           code: ({node, inline, ...props}) => 
             inline 
-              ? <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono" {...props} />
-              : <code className="block bg-gray-900 text-gray-100 p-3 rounded-lg overflow-x-auto font-mono text-sm my-2" {...props} />,
+              ? <code className="rounded bg-slate-100 px-1.5 py-0.5 text-sm font-mono dark:bg-slate-700" {...props} />
+              : <code className="my-2 block overflow-x-auto rounded-lg bg-slate-900 p-3 font-mono text-sm text-slate-100" {...props} />,
           pre: ({node, ...props}) => <pre className="my-2" {...props} />,
-          blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-gray-300 pl-4 italic my-2" {...props} />,
-          a: ({node, ...props}) => <a className="text-blue-600 hover:text-blue-800 underline" target="_blank" rel="noopener noreferrer" {...props} />,
-          table: ({node, ...props}) => <div className="overflow-x-auto my-2"><table className="min-w-full border border-gray-300" {...props} /></div>,
-          th: ({node, ...props}) => <th className="border border-gray-300 px-3 py-2 bg-gray-100 font-semibold text-left" {...props} />,
-          td: ({node, ...props}) => <td className="border border-gray-300 px-3 py-2" {...props} />,
-          hr: ({node, ...props}) => <hr className="my-4 border-gray-300" {...props} />,
+          blockquote: ({node, ...props}) => <blockquote className="my-2 border-l-4 border-slate-300 pl-4 italic dark:border-slate-600" {...props} />,
+          a: ({node, ...props}) => <a className="text-blue-600 underline hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200" target="_blank" rel="noopener noreferrer" {...props} />,
+          table: ({node, ...props}) => <div className="my-2 overflow-x-auto"><table className="min-w-full border border-slate-300 dark:border-slate-600" {...props} /></div>,
+          th: ({node, ...props}) => <th className="border border-slate-300 bg-slate-100 px-3 py-2 text-left font-semibold dark:border-slate-600 dark:bg-slate-800" {...props} />,
+          td: ({node, ...props}) => <td className="border border-slate-300 px-3 py-2 dark:border-slate-600" {...props} />,
+          hr: ({node, ...props}) => <hr className="my-4 border-slate-300 dark:border-slate-600" {...props} />,
         }}
       >
         {content}
@@ -178,7 +178,7 @@ function ChatbotPanel() {
           {/* Avatar */}
           <div className={`flex-shrink-0 ${isBot ? 'mr-3' : 'ml-3'}`}>
             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-              isBot ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white'
+              isBot ? 'bg-blue-600 text-white' : 'bg-slate-600 text-white dark:bg-slate-700'
             }`}>
               {isBot ? <Bot className="w-5 h-5" /> : <User className="w-5 h-5" />}
             </div>
@@ -189,20 +189,20 @@ function ChatbotPanel() {
             <div className={`px-4 py-3 rounded-lg ${
               isBot 
                 ? message.error 
-                  ? 'bg-red-50 text-red-900 border border-red-200' 
-                  : 'bg-white border border-gray-200 shadow-sm' 
+                  ? 'border border-red-200 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950/50 dark:text-red-200' 
+                  : 'border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900' 
                 : 'bg-blue-600 text-white'
             }`}>
               {/* Reasoning Process (Extracted from content) */}
               {message.reasoning && (
                 <details className="mb-3 rounded border border-purple-300 bg-purple-50">
-                  <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-purple-700 flex items-center hover:bg-purple-100">
+                  <summary className="flex cursor-pointer select-none items-center px-3 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-100 dark:border-purple-700 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-900/50">
                     <Brain className="w-4 h-4 mr-2" />
                     Reasoning
                   </summary>
-                  <div className="border-t border-purple-200 px-3 py-2 bg-white">
-                    <div className="text-xs text-gray-700">
-                      <MarkdownRenderer content={message.reasoning} className="text-gray-700" />
+                  <div className="border-t border-purple-200 bg-white px-3 py-2 dark:border-purple-700 dark:bg-slate-900">
+                    <div className="text-xs text-slate-700 dark:text-slate-200">
+                      <MarkdownRenderer content={message.reasoning} className="text-slate-700 dark:text-slate-200" />
                     </div>
                   </div>
                 </details>
@@ -212,20 +212,20 @@ function ChatbotPanel() {
               <div className="text-sm">
                 <MarkdownRenderer 
                   content={message.content} 
-                  className={isBot ? 'text-gray-900' : 'text-white markdown-white'} 
+                  className={isBot ? 'text-slate-900 dark:text-slate-100' : 'text-white markdown-white'} 
                 />
               </div>
 
               {/* Thinking Process (Separate from Response) */}
               {message.thinking && (
-                <details className="mt-3 rounded border border-gray-300 bg-gray-50">
-                  <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-gray-700 flex items-center hover:bg-gray-100">
+                <details className="mt-3 rounded border border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
+                  <summary className="flex cursor-pointer select-none items-center px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700">
                     <Brain className="w-4 h-4 mr-2" />
                     Thinking Process
                   </summary>
-                  <div className="border-t border-gray-200 px-3 py-2 bg-white">
-                    <div className="text-xs text-gray-700">
-                      <MarkdownRenderer content={message.thinking} className="text-gray-700" />
+                  <div className="border-t border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
+                    <div className="text-xs text-slate-700 dark:text-slate-200">
+                      <MarkdownRenderer content={message.thinking} className="text-slate-700 dark:text-slate-200" />
                     </div>
                   </div>
                 </details>
@@ -259,12 +259,12 @@ function ChatbotPanel() {
               {/* Recommendations */}
               {message.recommendations && message.recommendations.length > 0 && (
                 <div className="mt-3 space-y-1">
-                  <p className="text-xs font-semibold text-gray-700 flex items-center">
+                  <p className="flex items-center text-xs font-semibold text-slate-700 dark:text-slate-300">
                     <Lightbulb className="w-3 h-3 mr-1" />
                     Recommendations:
                   </p>
                   {message.recommendations.map((rec, idx) => (
-                    <div key={idx} className="flex items-start text-xs text-gray-700 ml-4">
+                    <div key={idx} className="ml-4 flex items-start text-xs text-slate-700 dark:text-slate-300">
                       <span className="mr-2">•</span>
                       <span>{rec}</span>
                     </div>
@@ -274,7 +274,7 @@ function ChatbotPanel() {
 
               {/* Metadata */}
               {isBot && message.agentType && (
-                <div className="mt-2 pt-2 border-t border-gray-200 text-xs text-gray-500">
+                <div className="mt-2 border-t border-slate-200 pt-2 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
                   <span className="capitalize">{message.agentType}</span> Agent
                   {message.executionTime && (
                     <span className="ml-2">• {message.executionTime.toFixed(0)}ms</span>
@@ -283,7 +283,7 @@ function ChatbotPanel() {
               )}
             </div>
 
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               {message.timestamp.toLocaleTimeString()}
             </p>
           </div>
@@ -296,8 +296,8 @@ function ChatbotPanel() {
     <div className="flex flex-col h-full">
       {/* Default Prompts */}
       {messages.length <= 1 && defaultPrompts.length > 0 && (
-        <div className="p-6 bg-gradient-to-b from-blue-50 to-transparent">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
+        <div className="bg-gradient-to-b from-blue-50 to-transparent p-6 dark:from-slate-900 dark:to-transparent">
+          <h3 className="mb-3 flex items-center text-sm font-semibold text-slate-700 dark:text-slate-200">
             <Sparkles className="w-4 h-4 mr-2 text-blue-600" />
             Quick Actions
           </h3>
@@ -306,15 +306,15 @@ function ChatbotPanel() {
               <button
                 key={prompt.id}
                 onClick={() => handlePromptClick(prompt)}
-                className="p-3 text-left bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:shadow-md transition-all group"
+                className="group rounded-lg border border-slate-200 bg-white p-3 text-left transition-all hover:border-blue-400 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-blue-500"
               >
                 <div className="flex items-start">
                   <span className="text-2xl mr-2">{prompt.icon}</span>
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-medium text-gray-900 group-hover:text-blue-600 truncate">
+                    <h4 className="truncate text-sm font-medium text-slate-900 group-hover:text-blue-600 dark:text-slate-100 dark:group-hover:text-blue-300">
                       {prompt.title}
                     </h4>
-                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                    <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">
                       {prompt.prompt}
                     </p>
                   </div>
@@ -326,16 +326,16 @@ function ChatbotPanel() {
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
+      <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
         {messages.map((message) => (
           <Message key={message.id} message={message} />
         ))}
         
         {loading && (
           <div className="flex justify-start mb-4">
-            <div className="flex items-center bg-white border border-gray-200 rounded-lg px-4 py-3 shadow-sm">
+            <div className="flex items-center rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <Loader2 className="w-5 h-5 text-blue-600 animate-spin mr-2" />
-              <span className="text-sm text-gray-600">Analyzing...</span>
+              <span className="text-sm text-slate-600 dark:text-slate-300">Analyzing...</span>
             </div>
           </div>
         )}
@@ -344,20 +344,19 @@ function ChatbotPanel() {
       </div>
 
       {/* Input */}
-      <div className="p-4 bg-white border-t border-gray-200">
+      <div className="border-t border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/90">
         <form onSubmit={handleSubmit} className="flex space-x-2">
           <input
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             placeholder="Ask me anything about your infrastructure..."
-            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            disabled={loading}
+            className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-400"
           />
           <button
             type="submit"
             disabled={loading || !inputMessage.trim()}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
+            className="flex items-center rounded-lg bg-blue-600 px-6 py-3 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Send className="w-5 h-5" />
           </button>
