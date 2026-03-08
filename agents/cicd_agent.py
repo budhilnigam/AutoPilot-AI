@@ -17,6 +17,8 @@ from models.core_models import BuildData
 from services.bedrock_client import BedrockClient
 from services.knowledge_base import KnowledgeBase
 from services.github_client import GitHubClient
+from services.github_service import GitHubService
+from config import config
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,7 @@ class CICDAgent:
         self.bedrock_client = bedrock_client or BedrockClient()
         self.knowledge_base = knowledge_base
         self.github_client = github_client or GitHubClient()
+        self.github_service = GitHubService(token=config.GITHUB_TOKEN)
         self.agent_type = AgentType.CICD
         
         logger.info("CI/CD Agent initialized")
@@ -280,3 +283,63 @@ Provide CI/CD optimization recommendations."""
         except Exception as e:
             logger.error(f"CI/CD query analysis failed: {e}")
             return []
+    
+    def analyze_github_repository_health(self) -> Dict[str, Any]:
+        """
+        Analyze GitHub repository build health.
+        
+        Returns:
+            Health analysis with insights
+        """
+        if not self.github_service.is_configured():
+            logger.warning("GitHub not configured for health analysis")
+            return {
+                'status': 'unconfigured',
+                'message': 'GitHub service not configured. Set GITHUB_TOKEN, GITHUB_REPO_OWNER, and GITHUB_REPO_NAME.'
+            }
+        
+        try:
+            health = self.github_service.get_build_health_summary()
+            failed_builds = self.github_service.get_failed_builds(limit=3)
+            
+            insights = []
+            if health.get('status') == 'success':
+                # Create insights based on health data
+                success_rate = health.get('success_rate_percent', 0)
+                
+                # Build time insight
+                avg_build_time = health.get('average_build_time_seconds', 0)
+                
+                summary = f"Build Health: {health['health'].upper()} - {success_rate:.1f}% success rate"
+                
+                recommendations = []
+                if success_rate < 90:
+                    recommendations.append(f"Investigate failing builds: {len(failed_builds)} failures in recent runs")
+                if avg_build_time > 600:  # 10 minutes
+                    recommendations.append("Build time is high. Consider parallelization or caching optimization")
+                
+                insight = Insight(
+                    summary=summary,
+                    business_impact=f"Development velocity at {success_rate:.1f}%",
+                    severity=Severity.CRITICAL if success_rate < 70 else Severity.HIGH if success_rate < 90 else Severity.LOW,
+                    recommendations=recommendations,
+                    confidence_score=0.95
+                )
+                insights.append(insight)
+            
+            return {
+                'status': 'success',
+                'health': health,
+                'insights': [
+                    {
+                        'summary': i.summary,
+                        'severity': i.severity.value,
+                        'recommendations': i.recommendations
+                    }
+                    for i in insights
+                ]
+            }
+            
+        except Exception as e:
+            logger.error(f"GitHub health analysis failed: {e}")
+            return {'status': 'error', 'message': str(e)}

@@ -29,7 +29,7 @@ class NotificationService:
             region_name: AWS region
             sns_topic_arn: SNS Topic ARN for alerts
         """
-        self.region_name = region_name or os.getenv('AWS_REGION', 'ap-south-1')
+        self.region_name = region_name or os.getenv('AWS_REGION', 'us-east-1')
         self.sns_topic_arn = sns_topic_arn or os.getenv('SNS_TOPIC_ARN')
         
         try:

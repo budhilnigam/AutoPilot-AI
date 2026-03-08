@@ -38,7 +38,7 @@ class ToolGenerator:
         Args:
             region_name: AWS region
         """
-        self.region_name = region_name or os.getenv('AWS_REGION', 'ap-south-1')
+        self.region_name = region_name or os.getenv('AWS_REGION', 'us-east-1')
         
         # Note: Amazon Q Developer integration would go here
         # For now, we'll use Bedrock as a proxy for code generation
@@ -276,7 +276,7 @@ Return only the SQL script."""
             }
             
             response = self.bedrock_runtime.invoke_model(
-                modelId='anthropic.claude-3-5-sonnet-20241022-v2:0',
+                modelId='openai.gpt-oss-20b-1:0',
                 body=json.dumps(request_body)
             )
             

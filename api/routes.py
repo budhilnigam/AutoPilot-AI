@@ -17,7 +17,7 @@ from agents.db_agent import DBAgent
 from agents.cost_agent import CostAgent
 from agents.cicd_agent import CICDAgent
 from services.bedrock_client import BedrockClient
-from services.knowledge_base import KnowledgeBase
+from services.knowledge_base_factory import KnowledgeBaseInterface
 from services.cloudwatch_client import CloudWatchClient
 from services.billing_client import BillingClient
 from services.github_client import GitHubClient
@@ -41,7 +41,7 @@ class AutoPilotAPI:
         self.bedrock_client = BedrockClient()
         self.knowledge_base = None
         try:
-            self.knowledge_base = KnowledgeBase()
+            self.knowledge_base = KnowledgeBaseInterface()
         except Exception as e:
             logger.warning(f"Knowledge Base initialization failed: {e}")
         

@@ -27,7 +27,7 @@ class CloudWatchClient:
         Args:
             region_name: AWS region (defaults to env AWS_REGION)
         """
-        self.region_name = region_name or os.getenv('AWS_REGION', 'ap-south-1')
+        self.region_name = region_name or os.getenv('AWS_REGION', 'us-east-1')
         
         config = Config(
             region_name=self.region_name,

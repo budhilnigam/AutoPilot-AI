@@ -11,6 +11,7 @@ Responsible for:
 import logging
 import statistics
 import time
+import json
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 
@@ -19,6 +20,8 @@ from models.core_models import MetricData, Anomaly, Recommendation
 from services.bedrock_client import BedrockClient
 from services.knowledge_base import KnowledgeBase
 from services.cloudwatch_client import CloudWatchClient
+from services.aws_api_executor import get_aws_executor
+from config import config
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +30,7 @@ class ObservabilityAgent:
     """
     Observability Agent for metric analysis and anomaly detection.
     
-    Generates semantic insights with business context.
+    Uses dynamic AWS API execution via tool calling for maximum flexibility.
     """
     
     def __init__(
@@ -42,14 +45,206 @@ class ObservabilityAgent:
         Args:
             bedrock_client: Bedrock client for LLM
             knowledge_base: Knowledge base for RAG
-            cloudwatch_client: CloudWatch client for metrics
+            cloudwatch_client: CloudWatch client for metrics (legacy, kept for compatibility)
         """
         self.bedrock_client = bedrock_client or BedrockClient()
         self.knowledge_base = knowledge_base
         self.cloudwatch_client = cloudwatch_client or CloudWatchClient()
         self.agent_type = AgentType.OBSERVABILITY
         
-        logger.info("Observability Agent initialized")
+        # Get the dynamic AWS executor
+        self.aws_executor = get_aws_executor(config.AWS_REGION)
+        
+        logger.info("Observability Agent initialized with dynamic AWS API executor")
+    
+    def analyze_with_dynamic_tools(
+        self,
+        task_id: str,
+        user_query: str,
+        context: Dict[str, Any] = None
+    ) -> AgentResponse:
+        """
+        Analyze observability data using dynamic AWS API tool calling.
+        
+        This method lets the LLM decide which AWS APIs to call based on the query,
+        rather than having hardcoded API calls.
+        
+        Args:
+            task_id: Task identifier
+            user_query: Natural language query from user
+            context: Additional context (e.g., AWS account info)
+            
+        Returns:
+            AgentResponse with insights generated using dynamic tool execution
+            
+        Example queries the LLM can handle:
+            - "Show me recent CloudWatch logs for errors"
+            - "List all EC2 instances with high CPU"
+            - "Get RDS database metrics for the last hour"
+            - "Find Lambda functions with high error rates"
+        """
+        start_time = time.time()
+        context = context or {}
+        
+        try:
+            # Prepare system prompt for the LLM
+            system_prompt = """You are an expert AWS observability agent analyzing infrastructure.
+
+Your goal: Answer the user's observability query by making appropriate AWS API calls.
+
+Available AWS SDK tool: aws_api_executor
+- You can call ANY AWS service (ec2, cloudwatch, logs, rds, lambda, etc.)
+- You decide which API operations to use
+- You construct the proper parameters
+
+Guidelines:
+1. For CloudWatch metrics: Use 'cloudwatch' service with operations like 'list_metrics', 'get_metric_statistics'
+2. For logs: Use 'logs' service with operations like 'describe_log_groups', 'filter_log_events'
+3. For EC2: Use ec2' service with operations like 'describe_instances'
+4. For RDS: Use 'rds' service with operations like 'describe_db_instances'
+
+CRITICAL: Do NOT use 'MaxRecords' parameter with CloudWatch list_metrics - it's not supported!
+Use 'NextToken' for pagination instead.
+
+After gathering data via AWS APIs, provide insights in natural language."""
+            
+            # Add AWS account context if available
+            if context.get('aws_account'):
+                acc = context['aws_account']
+                system_prompt += f"\n\nCurrent AWS Context:\n- Account: {acc.get('account_id')}\n- Region: {acc.get('region')}\n- Monthly Cost: ${acc.get('monthly_unblended_cost_usd', 0):.2f}"
+            
+            user_prompt = f"User Query: {user_query}\n\nPlease analyze this observability query and provide insights."
+            
+            # Get tool definition from AWS executor
+            tools = [self.aws_executor.get_tool_definition()]
+            
+            # Define tool executor function
+            def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Any:
+                """Execute AWS API calls requested by the LLM"""
+                if tool_name == "aws_api_executor":
+                    try:
+                        result = self.aws_executor.execute(
+                            service=tool_input['service'],
+                            operation=tool_input['operation'],
+                            parameters=tool_input.get('parameters', {})
+                        )
+                        logger.info(f"Tool executed: {tool_input['service']}.{tool_input['operation']}")
+                        return result
+                    except Exception as e:
+                        logger.error(f"Tool execution failed: {e}")
+                        return {"error": str(e)}
+                else:
+                    return {"error": f"Unknown tool: {tool_name}"}
+            
+            # Invoke Claude with tool support
+            response = self.bedrock_client.invoke_with_tools(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                tools=tools,
+                tool_executor=execute_tool,
+                max_iterations=5,
+                temperature=0.0,
+                use_haiku=False  # Use Sonnet for better reasoning
+            )
+            
+            # Extract insights from response
+            insights = [
+                Insight(
+                    summary=response['content'][:200] if len(response['content']) > 200 else response['content'],
+                    severity=Severity.LOW,
+                    business_impact=f"Query answered using {response.get('iterations', 0)} tool calls",
+                    confidence_score=0.8,
+                    recommendations=[
+                        "Review the detailed response for observability insights"
+                    ]
+                )
+            ]
+            
+            execution_time = (time.time() - start_time) * 1000
+            
+            return AgentResponse(
+                agent_type=self.agent_type,
+                task_id=task_id,
+                status=TaskStatus.SUCCESS,
+                insights=insights,
+                data={
+                    'full_response': response['content'],
+                    'tool_iterations': response.get('iterations', 0),
+                    'tokens_used': response.get('usage', {})
+                },
+                execution_time_ms=execution_time
+            )
+            
+        except Exception as e:
+            logger.error(f"Dynamic tool analysis failed: {e}")
+
+            # Fallback path: still answer the user even if tool-calling is unavailable.
+            try:
+                fallback_system_prompt = """You are an AWS observability expert.
+
+Tool-calling is unavailable in this environment. Provide best-effort guidance based on:
+- User query
+- AWS account context
+- Observability best practices
+
+Be explicit when an answer is guidance vs verified live data."""
+
+                fallback_prompt = f"""User Query: {user_query}
+
+AWS Context: {context.get('aws_account', {})}
+
+Provide actionable observability guidance and next checks."""
+
+                fallback = self.bedrock_client.invoke_claude_sonnet(
+                    system_prompt=fallback_system_prompt,
+                    user_prompt=fallback_prompt,
+                    temperature=0.0,
+                    max_tokens=1024,
+                )
+
+                fallback_text = (fallback.get('content') or '').strip()
+                if not fallback_text:
+                    fallback_text = (
+                        "I could not fetch live observability data from AWS tools in this run. "
+                        "Please verify CloudWatch metric/log permissions and Bedrock model tool-call compatibility."
+                    )
+
+                execution_time = (time.time() - start_time) * 1000
+                return AgentResponse(
+                    agent_type=self.agent_type,
+                    task_id=task_id,
+                    status=TaskStatus.SUCCESS,
+                    insights=[
+                        Insight(
+                            summary=fallback_text[:400],
+                            severity=Severity.MEDIUM,
+                            business_impact="Returned best-effort guidance because dynamic tool execution failed",
+                            confidence_score=0.55,
+                            recommendations=[
+                                "Check Bedrock model capability for tool calling",
+                                "Verify IAM permissions for CloudWatch/Logs APIs",
+                            ],
+                        )
+                    ],
+                    data={
+                        'full_response': fallback_text,
+                        'tool_error': str(e),
+                    },
+                    execution_time_ms=execution_time,
+                )
+            except Exception as fallback_error:
+                logger.error(f"Observability fallback also failed: {fallback_error}")
+                execution_time = (time.time() - start_time) * 1000
+
+                return AgentResponse(
+                    agent_type=self.agent_type,
+                    task_id=task_id,
+                    status=TaskStatus.FAILED,
+                    insights=[],
+                    data={'error': str(e), 'fallback_error': str(fallback_error)},
+                    execution_time_ms=execution_time,
+                    error_message=str(e)
+                )
     
     def analyze_metrics(
         self,

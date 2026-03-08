@@ -33,6 +33,9 @@ htmlcov/
 *.log
 logs/
 
+# Local Knowledge Base (development)
+local_kb/
+
 # Generated tools
 generated_tools/
 

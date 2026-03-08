@@ -46,7 +46,7 @@ class KnowledgeBase:
             s3_bucket: S3 bucket for document storage
             knowledge_base_id: Bedrock Knowledge Base ID
         """
-        self.region_name = region_name or os.getenv('AWS_REGION', 'ap-south-1')
+        self.region_name = region_name or os.getenv('AWS_REGION', 'us-east-1')
         self.s3_bucket = s3_bucket or os.getenv('S3_BUCKET_NAME')
         self.knowledge_base_id = knowledge_base_id or os.getenv('KNOWLEDGE_BASE_ID')
         

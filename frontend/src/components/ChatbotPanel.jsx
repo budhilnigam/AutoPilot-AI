@@ -52,13 +52,14 @@ function ChatbotPanel() {
   }
 
   const sendMessage = async (message) => {
-    if (!message.trim() && !inputMessage.trim()) return
-
+    // Use optional chaining to safely check message, fallback to inputMessage
     const userMessage = message || inputMessage
+    if (!userMessage || !userMessage.trim()) return
+
     const newUserMessage = {
       id: Date.now(),
       type: 'user',
-      content: userMessage,
+      content: userMessage.trim(),
       timestamp: new Date(),
     }
 

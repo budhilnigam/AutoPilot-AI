@@ -172,6 +172,7 @@ class PlannerAgent:
             
             # Synthesize responses
             synthesized = self._synthesize_responses(query, agent_responses)
+            primary_agent = agent_plan[0]['agent'].value if agent_plan else self.agent_type.value
             
             execution_time = (time.time() - start_time) * 1000
             
@@ -179,9 +180,11 @@ class PlannerAgent:
                 'task_id': task_id,
                 'query': query,
                 'agents_invoked': [plan['agent'] for plan in agent_plan],
+                'summary': synthesized.get('summary', ''),
                 'insights': synthesized['insights'],
                 'recommendations': synthesized['recommendations'],
                 'data': synthesized['data'],
+                'agent_type': primary_agent,
                 'execution_time_ms': execution_time,
                 'status': 'SUCCESS'
             }
@@ -348,6 +351,12 @@ Which agent(s) should handle this query?"""
                         metrics=context['metrics'],
                         context=task_context
                     )
+                elif agent_type == AgentType.OBSERVABILITY and hasattr(agent, 'analyze_with_dynamic_tools'):
+                    response = agent.analyze_with_dynamic_tools(
+                        task_id=task_id,
+                        user_query=query,
+                        context=task_context,
+                    )
                 elif hasattr(agent, 'process_task'):
                     response = agent.process_task(task_id, query, task_context)
                 else:
@@ -402,8 +411,29 @@ Which agent(s) should handle this query?"""
         
         # Deduplicate and prioritize
         unique_recommendations = list(set(recommendations))
+
+        if all_insights:
+            top_insights = [insight.summary for insight in all_insights[:3] if insight.summary]
+            summary = "\n".join([f"- {text}" for text in top_insights])
+        elif responses:
+            failed_agents = [
+                response.agent_type.value
+                for response in responses
+                if response.status == TaskStatus.FAILED
+            ]
+            if failed_agents:
+                summary = (
+                    "I could not complete this request because agent execution failed for: "
+                    + ", ".join(failed_agents)
+                    + "."
+                )
+            else:
+                summary = "I could not find actionable results for this request."
+        else:
+            summary = "No agent was selected to handle this request."
         
         return {
+            'summary': summary,
             'insights': [
                 {
                     'summary': insight.summary,
