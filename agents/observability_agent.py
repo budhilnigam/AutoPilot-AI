@@ -192,18 +192,20 @@ After gathering data via AWS APIs, provide insights in natural language."""
             display_answer = parsed_output.get('answer') or response.get('content', '')
             thinking = parsed_output.get('thinking', '')
             
-            # Extract insights from response
-            insights = [
-                Insight(
-                    summary=display_answer,
-                    severity=Severity.LOW,
-                    business_impact=f"Query answered using {response.get('iterations', 0)} tool calls",
-                    confidence_score=0.8,
+            # Extract insights from response - create brief summary instead of full response
+            tool_count = response.get('iterations', 0)
+            insights = []
+            
+            if tool_count > 0:
+                insights.append(Insight(
+                    summary=f"Observability analysis completed using {tool_count} AWS API call(s)",
+                    severity=Severity.INFO,
+                    business_impact="Live AWS data retrieved and analyzed",
+                    confidence_score=0.9,
                     recommendations=[
-                        "Review the detailed response for observability insights"
+                        "Review the detailed analysis in the response"
                     ]
-                )
-            ]
+                ))
             
             execution_time = (time.time() - start_time) * 1000
             
@@ -217,7 +219,8 @@ After gathering data via AWS APIs, provide insights in natural language."""
                     'raw_model_response': response.get('content', ''),
                     'thinking': thinking,
                     'tool_iterations': response.get('iterations', 0),
-                    'tokens_used': response.get('usage', {})
+                    'tokens_used': response.get('usage', {}),
+                    'answer': display_answer  # Make sure answer is available for planner
                 },
                 execution_time_ms=execution_time
             )

@@ -420,10 +420,8 @@ async def chat(message: ChatMessage):
 
         thinking_text = "\n\n".join(deduped_thinking) if deduped_thinking else None
 
-        if not response_text and insights:
-            insight_summaries = [item.get('summary', '').strip() for item in insights if item.get('summary')]
-            if insight_summaries:
-                response_text = "\n".join([f"- {text}" for text in insight_summaries[:3]])
+        # Removed fallback that duplicated insights into response_text
+        # The planner now properly synthesizes response from agent data
 
         if not response_text and result.get('status') == 'FAILED':
             response_text = result.get('error') or 'Request processing failed in the planner pipeline.'
