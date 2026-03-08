@@ -341,7 +341,7 @@ class BedrockClient:
         user_prompt: str,
         tools: List[Dict[str, Any]],
         tool_executor: callable,
-        max_iterations: int = 5,
+        max_iterations: int = 10,
         max_output_tokens: int = 1200,
         temperature: float = 0.0,
         use_haiku: bool = False,

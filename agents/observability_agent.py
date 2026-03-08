@@ -22,6 +22,7 @@ from services.bedrock_client import BedrockClient
 from services.knowledge_base import KnowledgeBase
 from services.cloudwatch_client import CloudWatchClient
 from services.aws_api_executor import get_aws_executor
+from services.github_service import GitHubService
 from config import config
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,7 @@ class ObservabilityAgent:
         bedrock_client: BedrockClient = None,
         knowledge_base: KnowledgeBase = None,
         cloudwatch_client: CloudWatchClient = None,
+        github_service: GitHubService = None,
     ):
         """
         Initialize Observability Agent.
@@ -47,16 +49,159 @@ class ObservabilityAgent:
             bedrock_client: Bedrock client for LLM
             knowledge_base: Knowledge base for RAG
             cloudwatch_client: CloudWatch client for metrics (legacy, kept for compatibility)
+            github_service: GitHub service for repository and CI/CD data
         """
         self.bedrock_client = bedrock_client or BedrockClient()
         self.knowledge_base = knowledge_base
         self.cloudwatch_client = cloudwatch_client or CloudWatchClient()
+        self.github_service = github_service or GitHubService()
         self.agent_type = AgentType.OBSERVABILITY
         
         # Get the dynamic AWS executor
         self.aws_executor = get_aws_executor(config.AWS_REGION)
         
-        logger.info("Observability Agent initialized with dynamic AWS API executor")
+        logger.info("Observability Agent initialized with dynamic AWS API executor and GitHub integration")
+
+    def _get_github_tool_definition(self) -> Dict[str, Any]:
+        """
+        Get the GitHub tool definition for LLM function calling.
+        
+        Returns:
+            Tool definition in Anthropic tool format
+        """
+        return {
+            "name": "github_query",
+            "description": (
+                "Query GitHub repository data including repository info, builds, commits, and CI/CD metrics. "
+                "You can target any repository the token can access (including private repos)."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string",
+                        "description": (
+                            "GitHub operation to perform. Options: "
+                            "'get_repo_info' (repository metadata), "
+                            "'get_recent_builds' (recent workflow runs), "
+                            "'get_failed_builds' (failed workflow runs), "
+                            "'get_build_trends' (build success/failure trends), "
+                            "'get_recent_commits' (recent commit history), "
+                            "'get_workflows' (available GitHub Actions workflows), "
+                            "'get_accessible_repos' (list repos accessible by token, including private)"
+                        ),
+                        "enum": [
+                            "get_repo_info",
+                            "get_recent_builds", 
+                            "get_failed_builds",
+                            "get_build_trends",
+                            "get_recent_commits",
+                            "get_workflows",
+                            "get_accessible_repos"
+                        ]
+                    },
+                    "parameters": {
+                        "type": "object",
+                        "description": (
+                            "Optional parameters for the operation. "
+                            "Target repository with either {'owner': 'org-or-user', 'repo': 'repo-name'} "
+                            "or {'repository': 'owner/repo'}. "
+                            "For get_recent_builds/get_failed_builds: {'limit': 10}. "
+                            "For get_build_trends: {'days': 7}. "
+                            "For get_recent_commits: {'limit': 20, 'branch': 'main'}. "
+                            "For get_accessible_repos: {'limit': 20}."
+                        )
+                    }
+                },
+                "required": ["operation"]
+            }
+        }
+
+    def _execute_github_operation(self, operation: str, parameters: Dict[str, Any] = None) -> Any:
+        """
+        Execute a GitHub operation.
+        
+        Args:
+            operation: GitHub operation name
+            parameters: Optional parameters for the operation
+            
+        Returns:
+            Operation result
+        """
+        if not self.github_service.is_configured():
+            return {"error": "GitHub token is not configured. Set GITHUB_TOKEN in .env"}
+        
+        parameters = parameters or {}
+
+        repo_ref = parameters.get('repository')
+        owner = parameters.get('owner')
+        repo = parameters.get('repo')
+        if repo_ref and isinstance(repo_ref, str) and '/' in repo_ref:
+            owner, repo = repo_ref.split('/', 1)
+        
+        try:
+            if operation == "get_accessible_repos":
+                limit = parameters.get('limit', 20)
+                return self.github_service.list_accessible_repositories(limit=limit)
+
+            if operation == "get_repo_info":
+                return self.github_service.get_repository_info(owner=owner, repo=repo)
+            
+            elif operation == "get_recent_builds":
+                limit = parameters.get('limit', 10)
+                builds = self.github_service.get_recent_builds(limit=limit, owner=owner, repo=repo)
+                return [self._build_to_dict(b) for b in builds]
+            
+            elif operation == "get_failed_builds":
+                limit = parameters.get('limit', 5)
+                failed = self.github_service.get_failed_builds(limit=limit, owner=owner, repo=repo)
+                return [self._build_to_dict(b) for b in failed]
+            
+            elif operation == "get_build_trends":
+                days = parameters.get('days', 7)
+                return self.github_service.get_build_trends(days=days, owner=owner, repo=repo)
+            
+            elif operation == "get_recent_commits":
+                limit = parameters.get('limit', 20)
+                branch = parameters.get('branch', 'main')
+                return self.github_service.get_commit_history(
+                    branch=branch,
+                    limit=limit,
+                    owner=owner,
+                    repo=repo,
+                )
+            
+            elif operation == "get_workflows":
+                limit = parameters.get('limit', 10)
+                workflow_id = parameters.get('workflow_id')
+                return self.github_service.get_workflow_runs(
+                    workflow_id=workflow_id,
+                    limit=limit,
+                    owner=owner,
+                    repo=repo,
+                )
+            
+            else:
+                return {"error": f"Unknown GitHub operation: {operation}"}
+                
+        except Exception as e:
+            logger.error(f"GitHub operation {operation} failed: {e}")
+            return {"error": str(e)}
+    
+    def _build_to_dict(self, build) -> Dict[str, Any]:
+        """Convert BuildData object to dictionary for JSON serialization"""
+        if hasattr(build, '__dict__'):
+            return {
+                'build_id': getattr(build, 'build_id', None),
+                'status': getattr(build, 'status', None),
+                'start_time': str(getattr(build, 'start_time', None)),
+                'duration_seconds': getattr(build, 'duration_seconds', None),
+                'commit_sha': getattr(build, 'commit_sha', None),
+                'branch': getattr(build, 'branch', None),
+                'workflow_name': getattr(build, 'workflow_name', None),
+            }
+        return build
+
 
     @staticmethod
     def _parse_model_output(raw_content: str) -> Dict[str, str]:
@@ -128,39 +273,52 @@ class ObservabilityAgent:
         
         try:
             # Prepare system prompt for the LLM
-            system_prompt = """You are an expert AWS observability agent analyzing infrastructure.
+            system_prompt = """You are an expert AWS observability agent analyzing infrastructure and CI/CD pipelines.
 
-Your goal: Answer the user's observability query by making appropriate AWS API calls.
+Your goal: Answer the user's query by making appropriate AWS API calls and/or GitHub repository queries.
 
-Available AWS SDK tool: aws_api_executor
-- You can call ANY AWS service (ec2, cloudwatch, logs, rds, lambda, etc.)
-- You decide which API operations to use
-- You construct the proper parameters
+Available tools:
+1. aws_api_executor - Call ANY AWS service (ec2, cloudwatch, logs, rds, lambda, etc.)
+2. github_query - Query GitHub repository data (builds, commits, workflows, CI/CD metrics)
 
-Guidelines:
-1. For CloudWatch metrics: Use 'cloudwatch' service with operations like 'list_metrics', 'get_metric_statistics'
-2. For logs: Use 'logs' service with operations like 'describe_log_groups', 'filter_log_events'
-3. For EC2: Use ec2' service with operations like 'describe_instances'
-4. For RDS: Use 'rds' service with operations like 'describe_db_instances'
+AWS Guidelines:
+- For CloudWatch metrics: Use 'cloudwatch' service with operations like 'list_metrics', 'get_metric_statistics'
+- For logs: Use 'logs' service with operations like 'describe_log_groups', 'filter_log_events'
+- For EC2: Use 'ec2' service with operations like 'describe_instances'
+- For RDS: Use 'rds' service with operations like 'describe_db_instances'
+- CRITICAL: Do NOT use 'MaxRecords' parameter with CloudWatch list_metrics - it's not supported!
 
-CRITICAL: Do NOT use 'MaxRecords' parameter with CloudWatch list_metrics - it's not supported!
-Use 'NextToken' for pagination instead.
+GitHub Guidelines:
+- Use github_query when user asks about repository, builds, CI/CD, workflows, pull requests, or commits
+- Target any repository by passing owner/repo (or repository='owner/repo') in github_query parameters
+- Available operations: get_repo_info, get_recent_builds, get_failed_builds, get_build_trends, get_recent_commits, get_workflows, get_accessible_repos
 
-After gathering data via AWS APIs, provide insights in natural language."""
+After gathering data, provide insights in natural language."""
             
             # Add AWS account context if available
             if context.get('aws_account'):
                 acc = context['aws_account']
                 system_prompt += f"\n\nCurrent AWS Context:\n- Account: {acc.get('account_id')}\n- Region: {acc.get('region')}\n- Monthly Cost: ${acc.get('monthly_unblended_cost_usd', 0):.2f}"
             
-            user_prompt = f"User Query: {user_query}\n\nPlease analyze this observability query and provide insights."
+            # Add GitHub context if configured
+            if self.github_service.is_configured():
+                system_prompt += (
+                    "\n\nGitHub token is configured. "
+                    "Default repository may be set in .env, but github_query can target any owner/repo explicitly."
+                )
             
-            # Get tool definition from AWS executor
+            user_prompt = f"User Query: {user_query}\n\nPlease analyze this query and provide insights."
+            
+            # Get tool definitions
             tools = [self.aws_executor.get_tool_definition()]
+            
+            # Add GitHub tool if configured
+            if self.github_service.is_configured():
+                tools.append(self._get_github_tool_definition())
             
             # Define tool executor function
             def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Any:
-                """Execute AWS API calls requested by the LLM"""
+                """Execute AWS API calls or GitHub queries requested by the LLM"""
                 if tool_name == "aws_api_executor":
                     try:
                         result = self.aws_executor.execute(
@@ -173,6 +331,19 @@ After gathering data via AWS APIs, provide insights in natural language."""
                     except Exception as e:
                         logger.error(f"Tool execution failed: {e}")
                         return {"error": str(e)}
+                
+                elif tool_name == "github_query":
+                    try:
+                        result = self._execute_github_operation(
+                            operation=tool_input['operation'],
+                            parameters=tool_input.get('parameters', {})
+                        )
+                        logger.info(f"GitHub tool executed: {tool_input['operation']}")
+                        return result
+                    except Exception as e:
+                        logger.error(f"GitHub tool execution failed: {e}")
+                        return {"error": str(e)}
+                
                 else:
                     return {"error": f"Unknown tool: {tool_name}"}
             
@@ -182,7 +353,7 @@ After gathering data via AWS APIs, provide insights in natural language."""
                 user_prompt=user_prompt,
                 tools=tools,
                 tool_executor=execute_tool,
-                max_iterations=5,
+                max_iterations=10,
                 max_output_tokens=1200,
                 temperature=0.0,
                 use_haiku=False  # Use Sonnet for better reasoning

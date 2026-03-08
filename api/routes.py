@@ -17,6 +17,7 @@ from services.knowledge_base_factory import KnowledgeBaseInterface
 from services.cloudwatch_client import CloudWatchClient
 from services.billing_client import BillingClient
 from services.github_client import GitHubClient
+from services.github_service import GitHubService
 from services.tool_generator import ToolGenerator
 
 logger = logging.getLogger(__name__)
@@ -44,13 +45,15 @@ class AutoPilotAPI:
         self.cloudwatch_client = CloudWatchClient()
         self.billing_client = BillingClient()
         self.github_client = GitHubClient()
+        self.github_service = GitHubService()
         self.tool_generator = ToolGenerator()
         
         # Initialize unified single agent
         self.unified_agent = UnifiedAgent(
             bedrock_client=self.bedrock_client,
             knowledge_base=self.knowledge_base,
-            cloudwatch_client=self.cloudwatch_client
+            cloudwatch_client=self.cloudwatch_client,
+            github_service=self.github_service
         )
 
         # Legacy agent slots retained for backward-compatible health checks.
