@@ -279,6 +279,7 @@ Respond with JSON only."""
 
         raw = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("cicd"),
             system_prompt="You are a CI/CD performance AI. Respond only with valid JSON.",
         )
 
@@ -293,7 +294,7 @@ Respond with JSON only."""
                 "ratio": round(ratio, 2),
                 "threshold_s": round(threshold, 1),
             },
-            model_used=settings.bedrock_model_id,
+            model_used=settings.get_agent_model_id("cicd"),
         )
 
     # ── PREDICT_BUILD_FAILURE ─────────────────────────────────────────────
@@ -382,6 +383,7 @@ Respond with JSON only."""
 
         raw = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("cicd"),
             system_prompt="You are a CI/CD failure prediction AI. Respond only with valid JSON.",
         )
 
@@ -405,7 +407,7 @@ Respond with JSON only."""
                 "confidence": round(confidence, 2),
                 "infra_files_changed": infra_files,
             },
-            model_used=settings.bedrock_model_id,
+            model_used=settings.get_agent_model_id("cicd"),
         )
 
     # ── ANALYZE_WORKFLOW ──────────────────────────────────────────────────
@@ -476,6 +478,7 @@ Respond with JSON only."""
 
         raw = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("cicd"),
             system_prompt="You are a GitHub Actions AI. Respond only with valid JSON.",
         )
 
@@ -488,5 +491,5 @@ Respond with JSON only."""
                 "failed_runs": len(failed_runs),
                 "failure_rate_pct": round(failure_rate * 100, 1),
             },
-            model_used=settings.bedrock_model_id,
+            model_used=settings.get_agent_model_id("cicd"),
         )

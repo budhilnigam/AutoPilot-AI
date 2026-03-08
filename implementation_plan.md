@@ -90,8 +90,7 @@ autopilot_ai/
 │   ├── infra.py           # Dockerfile, ECS, Terraform, worker sizing
 │   ├── db.py              # EXPLAIN ANALYZE, index recs, Redis
 │   ├── cost.py            # Cost impact, right-sizing, tradeoff
-│   ├── cicd.py            # Build regression, trends, failure prediction
-│   └── tool_generator.py  # Claude codegen + sandboxed subprocess execution
+│   └── cicd.py            # Build regression, trends, failure prediction
 ├── api/
 │   ├── main.py            # FastAPI app with lifespan
 │   └── routes/
@@ -212,12 +211,6 @@ Each agent: receives `Task` with `parameters` dict → queries KB for context �
 - `track_build_times()`: stores 30-day history
 - `detect_regression()`: >1.5x baseline triggers alert
 - `predict_failures()`: failure rate >10% triggers prediction with confidence score
-
-#### [NEW] `autopilot_ai/agents/tool_generator.py`
-- Prompts Claude to generate Python code for a described task
-- Validates generated code: `ast.parse()` to check syntax, `ast.walk()` to block dangerous calls (`os.system`, `eval`, `exec`, `__import__`)
-- Executes via `subprocess.run()` with timeout=30s, `capture_output=True`
-- Returns stdout/stderr to calling agent
 
 ---
 

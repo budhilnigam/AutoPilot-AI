@@ -455,6 +455,33 @@ html, body, #root {
   animation: fade-in 0.2s ease;
 }
 
+/* ── Message diagnostics ────────────────────────────────────────────────── */
+.message-diagnostics {
+  background: rgba(244, 63, 94, 0.06);
+  border: 1px solid rgba(244, 63, 94, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.message-diagnostics-title {
+  color: var(--critical);
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.message-diagnostic-item {
+  padding: 4px 0;
+  border-top: 1px dashed rgba(244, 63, 94, 0.18);
+}
+
+.message-diagnostic-item:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
 /* ── Typing indicator ────────────────────────────────────────────────────── */
 .typing-indicator {
   display: flex;

@@ -15,12 +15,11 @@ const AGENT_ICONS = {
   db:             '🗄️',
   cost:           '💰',
   cicd:           '🚀',
-  tool_generator: '🔧',
   planner:        '🤖',
 }
 
 export default function MessageBubble({ message }) {
-  const { role, content, status, agentProgress } = message
+  const { role, content, status, agentProgress, diagnostics } = message
 
   if (role === 'user') {
     return (
@@ -33,6 +32,7 @@ export default function MessageBubble({ message }) {
   // ── Assistant message ─────────────────────────────────────────────────────
   const isStreaming = status === 'streaming'
   const isError     = status === 'error'
+  const hasDiagnostics = diagnostics?.has_failures && Array.isArray(diagnostics?.items)
 
   return (
     <div className="message message--assistant">
@@ -48,7 +48,7 @@ export default function MessageBubble({ message }) {
                 className="agent-pill"
                 title={
                   ap.error
-                    ? `${ap.agent}: ${ap.error}`
+                    ? `${ap.agent}: ${ap.error}${ap.error_hint ? `\nHint: ${ap.error_hint}` : ''}`
                     : `${ap.agent}: ${ap.insight_count ?? 0} insight${ap.insight_count !== 1 ? 's' : ''} · ${ap.execution_time_ms ?? 0}ms`
                 }
                 style={{ borderColor: ap._color || 'var(--text-muted)' }}
@@ -74,6 +74,20 @@ export default function MessageBubble({ message }) {
             <span className="cursor-blink">▋</span>
           )}
         </div>
+
+        {hasDiagnostics && (
+          <div className="message-diagnostics">
+            <div className="message-diagnostics-title">Tool/Service Failures</div>
+            {diagnostics.items.map((item, idx) => (
+              <div key={idx} className="message-diagnostic-item">
+                <strong>{item.agent}</strong>
+                {` (${item.status})`}
+                {`: ${item.category}`}
+                <div>{item.hint}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

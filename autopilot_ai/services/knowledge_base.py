@@ -33,7 +33,6 @@ from datetime import datetime
 from functools import partial
 from typing import Any
 
-import boto3
 from botocore.exceptions import ClientError
 
 from autopilot_ai.core.config import settings
@@ -41,6 +40,7 @@ from autopilot_ai.core.exceptions import IntegrationError, ThrottlingError
 from autopilot_ai.core.logging import get_logger
 from autopilot_ai.core.retry import with_retry
 from autopilot_ai.integrations.aws.s3 import s3_client
+from autopilot_ai.integrations.aws.tool import aws_api
 from autopilot_ai.models.domain import Configuration, ConfigType
 from autopilot_ai.models.metrics import MetricData
 
@@ -73,28 +73,7 @@ class KnowledgeBaseRetrievalResult:
         return f"KBResult(score={self.score:.3f}, uri={self.source_uri!r})"
 
 
-def _make_agent_runtime_client() -> Any:
-    kwargs: dict[str, Any] = {"region_name": settings.aws_region}
-    if settings.aws_access_key_id and settings.aws_secret_access_key:
-        kwargs["aws_access_key_id"] = settings.aws_access_key_id
-        kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
-    elif settings.aws_profile:
-        return boto3.Session(profile_name=settings.aws_profile).client(
-            "bedrock-agent-runtime", **kwargs
-        )
-    return boto3.client("bedrock-agent-runtime", **kwargs)
-
-
-def _make_agent_client() -> Any:
-    kwargs: dict[str, Any] = {"region_name": settings.aws_region}
-    if settings.aws_access_key_id and settings.aws_secret_access_key:
-        kwargs["aws_access_key_id"] = settings.aws_access_key_id
-        kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
-    elif settings.aws_profile:
-        return boto3.Session(profile_name=settings.aws_profile).client(
-            "bedrock-agent", **kwargs
-        )
-    return boto3.client("bedrock-agent", **kwargs)
+# Bedrock agent clients are accessed via the shared aws_api helper.
 
 
 class KnowledgeBaseService:
@@ -110,12 +89,13 @@ class KnowledgeBaseService:
     """
 
     def __init__(self) -> None:
-        self._runtime = _make_agent_runtime_client()
-        self._agent = _make_agent_client()
+        # No persistent clients — use aws_api for each call
+        self._runtime = None
+        self._agent = None
 
     # ── Private sync helpers ───────────────────────────────────────────────
 
-    def _retrieve_sync(
+    async def _retrieve_async(
         self,
         query: str,
         kb_id: str,
@@ -127,25 +107,25 @@ class KnowledgeBaseService:
         Validates Property 21: only results with score > threshold are returned.
         """
         try:
-            response = self._runtime.retrieve(
-                knowledgeBaseId=kb_id,
-                retrievalQuery={"text": query},
-                retrievalConfiguration={
-                    "vectorSearchConfiguration": {
-                        "numberOfResults": max_results,
-                        "overrideSearchType": "HYBRID",
-                    }
+            response = await aws_api(
+                "bedrock-agent-runtime",
+                "retrieve",
+                {
+                    "knowledgeBaseId": kb_id,
+                    "retrievalQuery": {"text": query},
+                    "retrievalConfiguration": {
+                        "vectorSearchConfiguration": {
+                            "numberOfResults": max_results,
+                            "overrideSearchType": "HYBRID",
+                        }
+                    },
                 },
             )
         except ClientError as e:
             code = e.response["Error"]["Code"]
             if "Throttl" in code or "TooMany" in code:
-                raise ThrottlingError(
-                    f"Bedrock KB Retrieve throttled: {e}", kb_id=kb_id
-                ) from e
-            raise IntegrationError(
-                f"Bedrock KB Retrieve failed: {e}", kb_id=kb_id
-            ) from e
+                raise ThrottlingError(f"Bedrock KB Retrieve throttled: {e}", kb_id=kb_id) from e
+            raise IntegrationError(f"Bedrock KB Retrieve failed: {e}", kb_id=kb_id) from e
 
         results: list[KnowledgeBaseRetrievalResult] = []
         for item in response.get("retrievalResults", []):
@@ -171,29 +151,21 @@ class KnowledgeBaseService:
                 )
             )
 
-        # Sort by descending score
         results.sort(key=lambda r: r.score, reverse=True)
         return results
 
-    def _start_ingestion_job_sync(self, kb_id: str, data_source_id: str) -> str:
-        """Trigger a KB ingestion job to sync newly uploaded S3 documents."""
+    async def _start_ingestion_job(self, kb_id: str, data_source_id: str) -> str:
         try:
-            response = self._agent.start_ingestion_job(
-                knowledgeBaseId=kb_id,
-                dataSourceId=data_source_id,
+            response = await aws_api(
+                "bedrock-agent",
+                "start_ingestion_job",
+                {"knowledgeBaseId": kb_id, "dataSourceId": data_source_id},
             )
         except ClientError as e:
             code = e.response["Error"]["Code"]
             if "Throttl" in code or "TooMany" in code:
-                raise ThrottlingError(
-                    f"Bedrock KB ingestion throttled: {e}", kb_id=kb_id
-                ) from e
-            # Ingestion jobs are best-effort — don't raise hard, log warning
-            logger.warning(
-                "kb_ingestion_job_failed",
-                kb_id=kb_id,
-                error=str(e),
-            )
+                raise ThrottlingError(f"Bedrock KB ingestion throttled: {e}", kb_id=kb_id) from e
+            logger.warning("kb_ingestion_job_failed", kb_id=kb_id, error=str(e))
             return "failed"
         return response.get("ingestionJob", {}).get("ingestionJobId", "unknown")
 
@@ -243,14 +215,9 @@ class KnowledgeBaseService:
             size=len(config.content),
         )
 
-        # Trigger ingestion if KB is configured
         kb_id = settings.knowledge_base_id
         if kb_id and data_source_id:
-            loop = asyncio.get_running_loop()
-            job_id = await loop.run_in_executor(
-                None,
-                partial(self._start_ingestion_job_sync, kb_id, data_source_id),
-            )
+            job_id = await self._start_ingestion_job(kb_id, data_source_id)
             logger.info("kb_ingestion_job_started", job_id=job_id, kb_id=kb_id)
 
         return s3_uri
@@ -286,20 +253,11 @@ class KnowledgeBaseService:
             logger.warning("kb_invalid_id", kb_id=kb_id, query=query[:80])
             return []
 
-        loop = asyncio.get_running_loop()
         try:
-            results = await loop.run_in_executor(
-                None,
-                partial(
-                    self._retrieve_sync,
-                    query,
-                    kb_id,
-                    max_results,
-                    settings.kb_similarity_threshold,
-                ),
+            results = await self._retrieve_async(
+                query, kb_id, max_results, settings.kb_similarity_threshold
             )
         except IntegrationError as e:
-            # KB retrieval should never block core agent analysis.
             logger.warning("kb_query_failed", kb_id=kb_id, error=str(e), query=query[:80])
             return []
 

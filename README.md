@@ -29,24 +29,9 @@ python3 -m venv venv
 source venv/bin/activate          # Windows: venv\Scripts\activate
 ```
 
-### 2a — Install Python dependencies (recommended)
+### 2 — Install Python dependencies
 
-All dependencies live in `pyproject.toml`. Install everything in one command:
-
-```bash
-# Production deps only
-pip install -e .
-
-# Production + dev tools (pytest, ruff, mypy, moto for mocking)
-pip install -e ".[dev]"
-```
-
-The `-e` flag makes the `autopilot_ai` package importable directly from source —
-no reinstall needed when you edit code.
-
-### 2b — Install from requirements.txt (alternative)
-
-If you prefer a flat requirements file (CI, Docker, etc.):
+All dependencies are listed in the `requirements.txt` file.
 
 ```bash
 # Production only
@@ -76,70 +61,36 @@ cp .env.example .env
 
 ---
 
-## Starting the backend
+## Starting the App (Separate Terminals)
+
+It is highly recommended to run the backend and frontend in separate terminals to easily monitor their logs.
+
+### 1. Starting the backend
 
 The backend is a standalone FastAPI + Uvicorn server on port **8000**. It exposes
 a full REST + WebSocket API — no frontend is required to use it.
 
-### Option A — uvicorn directly
-
+**In Terminal 1:**
 ```bash
+# Windows
+venv\Scripts\activate
+uvicorn autopilot_ai.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Mac/Linux
 source venv/bin/activate
 uvicorn autopilot_ai.api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Option B — Makefile shortcut
-
-```bash
-make install     # first time only — creates venv + installs deps
-make backend     # start FastAPI with --reload
-```
-
-### Option C — start.sh
-
-```bash
-chmod +x start.sh
-./start.sh           # backend only (same as make backend)
-```
-
----
-
-## Starting the frontend
+### 2. Starting the frontend
 
 The React dev server runs on port **5173** and proxies all `/api/*` calls to the
 backend on `:8000`. The backend must be running first.
 
-### Option A — npm directly
-
+**In Terminal 2:**
 ```bash
 cd frontend
 npm run dev
 # Open http://localhost:5173
-```
-
-### Option B — Makefile
-
-```bash
-make frontend
-```
-
-### Option C — start.sh
-
-```bash
-./start.sh --frontend
-```
-
----
-
-## Starting both together (full-stack dev mode)
-
-This starts the backend in the background and the frontend in the foreground.
-Ctrl+C stops both.
-
-```bash
-make dev
-# or
-./start.sh --full
 ```
 
 ---
@@ -149,9 +100,13 @@ make dev
 Builds the React app and has FastAPI serve the static files — one process, one port.
 
 ```bash
-make prod
-# or
-./start.sh --prod
+# 1. Build frontend
+cd frontend
+npm run build
+cd ..
+
+# 2. Run backend
+uvicorn autopilot_ai.api.main:app --host 0.0.0.0 --port 8000
 # Open http://localhost:8000
 ```
 
@@ -225,65 +180,6 @@ wscat -c ws://localhost:8000/api/alerts/ws
 http://localhost:8000/docs       # Swagger UI
 http://localhost:8000/redoc      # ReDoc
 ```
-
----
-
-## Makefile reference
-
-```bash
-make help          # list all targets with descriptions
-
-# Setup
-make install          # create venv + pip install -e ".[dev]"
-make install-frontend # npm install in frontend/
-
-# Running
-make backend          # FastAPI on :8000 with --reload
-make frontend         # Vite dev server on :5173
-make dev              # both (backend bg + frontend fg)
-make prod             # npm build + FastAPI serves static at :8000
-
-# API shortcuts (no frontend needed)
-make health           # GET /health
-make health-detail    # GET /health/detail
-make alerts           # GET /api/alerts
-make query Q="Why is the DB slow?"
-make stream Q="Health summary please"
-
-# Quality
-make test             # pytest tests/
-make lint             # ruff check
-make typecheck        # mypy
-```
-
----
-
-## pyproject.toml reference
-
-`pyproject.toml` is the single source of truth for the Python package. It replaces
-`requirements.txt` + `setup.py` + `setup.cfg` + `pytest.ini` + lint config.
-
-```bash
-# Install prod deps
-pip install -e .
-
-# Install prod + dev deps
-pip install -e ".[dev]"
-
-# Run linter directly
-ruff check autopilot_ai/
-
-# Run type checker
-mypy autopilot_ai/
-
-# Run tests
-pytest tests/ -v
-```
-
-Tool configs in `pyproject.toml`:
-- `[tool.ruff]` — linter, line length 100, Python 3.12 target
-- `[tool.mypy]` — strict mode
-- `[tool.pytest.ini_options]` — `asyncio_mode = auto`, `testpaths = ["tests"]`
 
 ---
 

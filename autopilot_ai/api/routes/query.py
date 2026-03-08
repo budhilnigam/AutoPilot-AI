@@ -91,15 +91,120 @@ def _extract_query_response(agent_resp: AgentResponse) -> QueryResponse:
     """
     raw = agent_resp.data.get("query_response")
     if raw:
-        return QueryResponse.model_validate(raw)
+        parsed = QueryResponse.model_validate(raw)
+        return _augment_query_response_with_diagnostics(parsed)
     # Fallback: build a minimal QueryResponse from the AgentResponse
-    return QueryResponse(
+    fallback = QueryResponse(
         query_id=agent_resp.task_id,
         narrative=agent_resp.error_message or "No narrative generated.",
         agent_responses=[],
         total_insights=len(agent_resp.insights),
         execution_time_ms=agent_resp.execution_time_ms,
     )
+    return _augment_query_response_with_diagnostics(fallback)
+
+
+def _friendly_failure_hint(error_message: str | None) -> tuple[str, str]:
+    """
+    Map low-level error text to a user-facing category and actionable hint.
+    """
+    raw = (error_message or "").lower()
+
+    if any(k in raw for k in ["accessdenied", "unauthorized", "not authorized", "forbidden"]):
+        return (
+            "permissions",
+            "The bot cannot access one or more AWS services. Verify IAM permissions for Bedrock/CloudWatch/Logs and resource policies.",
+        )
+    if any(k in raw for k in ["expiredtoken", "invalidclienttokenid", "unable to locate credentials", "credential"]):
+        return (
+            "credentials",
+            "AWS credentials are missing or invalid. Check AWS_PROFILE/AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY and session token expiry.",
+        )
+    if any(k in raw for k in ["throttl", "too many requests", "rate limit"]):
+        return (
+            "throttling",
+            "Service throttling/rate limits occurred. Retry shortly or reduce request fan-out.",
+        )
+    if any(k in raw for k in ["timeout", "timed out"]):
+        return (
+            "timeout",
+            "A tool call timed out. Narrow the query scope or increase timeout for this request.",
+        )
+    if any(k in raw for k in ["tool execution", "autonomous execution", "security violations", "validation"]):
+        return (
+            "tool_invocation",
+            "Dynamic tool execution failed. Refine the request objective and verify autonomous execution policy flags in .env.",
+        )
+    if any(k in raw for k in ["bedrock", "invoke model", "model error"]):
+        return (
+            "bedrock",
+            "Model invocation failed. Confirm Bedrock model access and region alignment.",
+        )
+    if any(k in raw for k in ["cloudwatch", "logs", "ecs", "rds", "lambda", "s3"]):
+        return (
+            "service_access",
+            "An AWS service call failed. Check service-specific permissions, region, and resource identifiers.",
+        )
+
+    return (
+        "unknown",
+        "A backend dependency failed during analysis. Check server logs using the query ID for details.",
+    )
+
+
+def _collect_failure_diagnostics(qr: QueryResponse) -> dict[str, Any]:
+    failed = [
+        ar
+        for ar in qr.agent_responses
+        if ar.status.value in {"failed", "partial", "timeout"} and ar.error_message
+    ]
+    if not failed:
+        return {
+            "has_failures": False,
+            "summary": "",
+            "items": [],
+        }
+
+    items: list[dict[str, str]] = []
+    for ar in failed:
+        category, hint = _friendly_failure_hint(ar.error_message)
+        items.append({
+            "agent": ar.agent_type.value,
+            "status": ar.status.value,
+            "category": category,
+            "message": ar.error_message or "",
+            "hint": hint,
+        })
+
+    # Keep concise and avoid duplicate hint lines in summary.
+    unique_hints: list[str] = []
+    seen = set()
+    for i in items:
+        if i["hint"] not in seen:
+            seen.add(i["hint"])
+            unique_hints.append(i["hint"])
+
+    summary = "Some checks were incomplete due to tool/service failures. " + " ".join(unique_hints[:3])
+    return {
+        "has_failures": True,
+        "summary": summary,
+        "items": items,
+    }
+
+
+def _augment_query_response_with_diagnostics(qr: QueryResponse) -> QueryResponse:
+    diagnostics = _collect_failure_diagnostics(qr)
+    if not diagnostics["has_failures"]:
+        return qr
+
+    warning_block = (
+        "\n\n---\n"
+        "**Execution Warning**\n"
+        f"{diagnostics['summary']}\n"
+        "- Query ID: "
+        f"`{qr.query_id}`"
+    )
+    return qr.model_copy(update={"narrative": (qr.narrative or "") + warning_block})
 
 
 def _sse_event(event: str, data: dict) -> str:
@@ -269,7 +374,10 @@ async def _stream_query(
                 "insight_count": len(ar.insights),
                 "execution_time_ms": round(ar.execution_time_ms, 1),
                 "error": ar.error_message,
+                "error_hint": _friendly_failure_hint(ar.error_message)[1] if ar.error_message else None,
             })
+
+        diagnostics = _collect_failure_diagnostics(qr)
 
         # Final done event
         yield _sse_event("done", {
@@ -277,6 +385,7 @@ async def _stream_query(
             "narrative": qr.narrative,
             "total_insights": qr.total_insights,
             "execution_time_ms": round(qr.execution_time_ms, 1),
+            "diagnostics": diagnostics,
             "agent_responses": [
                 {
                     "agent": ar.agent_type.value,

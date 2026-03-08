@@ -22,7 +22,6 @@ class AgentType(str, enum.Enum):
     DB = "db"
     COST = "cost"
     CICD = "cicd"
-    TOOL_GENERATOR = "tool_generator"
     PLANNER = "planner"
 
 
@@ -60,10 +59,6 @@ class TaskType(str, enum.Enum):
     PREDICT_FAILURES = "predict_failures"
     PREDICT_BUILD_FAILURE = "predict_build_failure"
     ANALYZE_WORKFLOW = "analyze_workflow"
-
-    # Tool Generator
-    GENERATE_TOOL = "generate_tool"
-    VALIDATE_TOOL = "validate_tool"
 
     # Planner
     PLAN_QUERY = "plan_query"

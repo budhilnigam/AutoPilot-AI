@@ -6,7 +6,6 @@ from autopilot_ai.agents.infra import InfraAgent
 from autopilot_ai.agents.db import DBAgent
 from autopilot_ai.agents.cost import CostAgent
 from autopilot_ai.agents.cicd import CICDAgent
-from autopilot_ai.agents.tool_generator import ToolGeneratorAgent
 from autopilot_ai.agents.planner import PlannerAgent, planner
 
 __all__ = [
@@ -16,7 +15,6 @@ __all__ = [
     "DBAgent",
     "CostAgent",
     "CICDAgent",
-    "ToolGeneratorAgent",
     "PlannerAgent",
     "planner",
 ]

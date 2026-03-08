@@ -11,7 +11,7 @@ import json
 AWS_REGION = "ap-south-1"
 AWS_ACCESS_KEY_ID = "AKIARFRAMVTLJFRO6PUW"
 AWS_SECRET_ACCESS_KEY = "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"
-MODEL_ID = "anthropic.claude-haiku-4-5-20251001-v1:0"
+MODEL_ID = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 
 runtime = boto3.client(
     "bedrock-runtime",

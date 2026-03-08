@@ -18,13 +18,12 @@ import os
 import time
 from typing import Any
 
-import boto3
 from fastapi import APIRouter
+from autopilot_ai.integrations.aws.tool import aws_api
 from pydantic import BaseModel
 
 from autopilot_ai.core.config import settings
 from autopilot_ai.core.logging import get_logger
-from autopilot_ai.services.github_poller import github_poller
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api", tags=["health"])
@@ -65,12 +64,8 @@ async def _check_bedrock() -> DependencyStatus:
     check_timeout = float(os.getenv("BEDROCK_HEALTH_TIMEOUT_SECONDS", str(_DEFAULT_CHECK_TIMEOUT)))
 
     try:
-        loop = asyncio.get_running_loop()
         await asyncio.wait_for(
-            loop.run_in_executor(
-                None,
-                _call_bedrock,
-            ),
+            aws_api("bedrock", "list_foundation_models", {"byOutputModality": "TEXT"}),
             timeout=check_timeout,
         )
         latency = (time.monotonic() - t0) * 1000
@@ -93,32 +88,8 @@ async def _check_bedrock() -> DependencyStatus:
         )
 
 
-def _call_bedrock() -> None:
-    """Build a boto session and call Bedrock with deterministic credential precedence."""
-    access_key = settings.aws_access_key_id or os.getenv("AWS_ACCESS_KEY_ID") or os.getenv("aws_access_key_id")
-    secret_key = settings.aws_secret_access_key or os.getenv("AWS_SECRET_ACCESS_KEY") or os.getenv("aws_secret_access_key")
-    profile = settings.aws_profile or os.getenv("AWS_PROFILE") or os.getenv("aws_profile")
-
-    session_kwargs: dict[str, str] = {}
-    if access_key and secret_key:
-        session_kwargs["aws_access_key_id"] = access_key
-        session_kwargs["aws_secret_access_key"] = secret_key
-    elif profile:
-        session_kwargs["profile_name"] = profile
-
-    # If explicit keys exist, ignore profile env vars for this call to avoid profile lookup errors.
-    restore_aws_profile = os.environ.pop("AWS_PROFILE", None) if access_key and secret_key else None
-    restore_aws_profile_lower = os.environ.pop("aws_profile", None) if access_key and secret_key else None
-
-    try:
-        session = boto3.Session(**session_kwargs)
-        client = session.client("bedrock", region_name=settings.aws_region)
-        client.list_foundation_models(byOutputModality="TEXT")
-    finally:
-        if restore_aws_profile is not None:
-            os.environ["AWS_PROFILE"] = restore_aws_profile
-        if restore_aws_profile_lower is not None:
-            os.environ["aws_profile"] = restore_aws_profile_lower
+# Note: credential precedence and profile handling are performed by boto3/aws-sdk.
+# The centralized `aws_api` helper will create clients using configured settings.
 
 
 async def _check_github() -> DependencyStatus:
@@ -213,7 +184,7 @@ async def readiness() -> dict[str, Any]:
 @router.get("/health/detail", response_model=HealthResponse, summary="Detailed dependency status")
 async def detail() -> HealthResponse:
     """
-    Full dependency breakdown including GitHub poller state.
+    Full dependency breakdown for core services.
     Always returns 200 — the per-dependency `healthy` flag tells callers
     what is broken.
     """
@@ -221,14 +192,7 @@ async def detail() -> HealthResponse:
         _check_bedrock(),
         _check_github(),
     )
-    poller_status = DependencyStatus(
-        name="github_poller",
-        healthy=github_poller.is_running,
-        latency_ms=0.0,
-        detail="running" if github_poller.is_running else "stopped",
-    )
-
-    deps = [bedrock_status, github_status, poller_status]
+    deps = [bedrock_status, github_status]
     all_healthy = all(d.healthy for d in deps)
 
     return HealthResponse(

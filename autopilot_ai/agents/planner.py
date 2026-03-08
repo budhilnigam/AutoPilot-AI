@@ -43,7 +43,6 @@ from autopilot_ai.agents.cost import CostAgent
 from autopilot_ai.agents.db import DBAgent
 from autopilot_ai.agents.infra import InfraAgent
 from autopilot_ai.agents.observability import ObservabilityAgent
-from autopilot_ai.agents.tool_generator import ToolGeneratorAgent
 from autopilot_ai.core.config import settings
 from autopilot_ai.core.exceptions import CircularDependencyError, PlannerError
 from autopilot_ai.core.logging import get_logger
@@ -62,7 +61,6 @@ _AGENT_REGISTRY: dict[AgentType, BaseAgent] = {
     AgentType.DB: DBAgent(),
     AgentType.COST: CostAgent(),
     AgentType.CICD: CICDAgent(),
-    AgentType.TOOL_GENERATOR: ToolGeneratorAgent(),
 }
 
 # ── Routing prompt ────────────────────────────────────────────────────────────
@@ -79,13 +77,47 @@ Available agent types and task types:
   db:            analyze_query_plan | recommend_indices | analyze_redis
   cost:          analyze_costs | identify_optimization | forecast_costs
   cicd:          track_build_times | detect_build_regression | predict_build_failure | analyze_workflow
-  tool_generator: generate_tool | validate_tool
 """
 
 
 def _strip_fences(text: str) -> str:
     cleaned = re.sub(r"^```(?:json)?\s*", "", text.strip(), flags=re.MULTILINE)
     return re.sub(r"\s*```$", "", cleaned.strip(), flags=re.MULTILINE)
+
+
+def _split_reasoning_and_final(text: str) -> tuple[str, str]:
+    """Extract optional <reasoning>/<final> blocks from a model response."""
+    raw = (text or "").strip()
+    if not raw:
+        return "", ""
+
+    reasoning_blocks = re.findall(r"<reasoning>(.*?)</reasoning>", raw, flags=re.DOTALL | re.IGNORECASE)
+    final_blocks = re.findall(r"<final>(.*?)</final>", raw, flags=re.DOTALL | re.IGNORECASE)
+
+    reasoning = "\n\n".join(b.strip() for b in reasoning_blocks if b.strip())
+    if final_blocks:
+        final_text = "\n\n".join(b.strip() for b in final_blocks if b.strip())
+        return reasoning, final_text
+
+    # If no explicit <final>, remove reasoning tags and use remaining text.
+    without_reasoning = re.sub(
+        r"<reasoning>.*?</reasoning>",
+        "",
+        raw,
+        flags=re.DOTALL | re.IGNORECASE,
+    ).strip()
+    return reasoning, without_reasoning
+
+
+def _compose_reasoning_and_final(reasoning: str, final_text: str) -> str:
+    """Compose assistant output in a consistent shape for frontend rendering."""
+    final_clean = (final_text or "").strip()
+    if not final_clean:
+        return ""
+    reasoning_clean = (reasoning or "").strip()
+    if reasoning_clean:
+        return f"<reasoning>{reasoning_clean}</reasoning>\n\n<final>{final_clean}</final>"
+    return final_clean
 
 
 def _topological_sort(
@@ -160,7 +192,7 @@ class PlannerAgent(BaseAgent):
                 execution_time_ms=0.0,  # will be overwritten by BaseAgent timer
                 insights=query_response.all_insights,
                 data={"query_response": query_response.model_dump(mode="json")},
-                model_used=settings.bedrock_model_id,
+                model_used=settings.get_agent_model_id("planner"),
             )
 
         if task.task_type == TaskType.SYNTHESIZE_RESPONSES:
@@ -192,15 +224,7 @@ class PlannerAgent(BaseAgent):
         # ── Step 1: Route query to agent tasks ───────────────────────────
         plans = await self._route_query(query, context, mode)
         if not plans:
-            # No agents needed — return direct narrative from Claude
-            narrative = await self._direct_answer(query)
-            return QueryResponse(
-                query_id=query_id,
-                narrative=narrative,
-                agent_responses=[],
-                total_insights=0,
-                execution_time_ms=(time.perf_counter() - t_start) * 1000,
-            )
+            logger.warning("planner_no_agents_matched", query_id=query_id)
 
         # ── Step 2: Build execution waves ────────────────────────────────
         try:
@@ -271,33 +295,22 @@ Context: {context_text}
 
 {_ROUTING_CHOICES}
 
-Decide which agents to invoke. Return a JSON array of tasks:
-[
-  {{
-    "id": "t1",
-    "agent_type": "<agent>",
-    "task_type": "<task_type>",
-    "parameters": {{}},
-    "depends_on": [],
-    "priority": "high|medium|low"
-  }}
-]
+Decide which agents to invoke and return a JSON array of tasks:
+[{{"id": "t1", "agent_type": "<agent>", "task_type": "<task_type>", "parameters": {{}}, "depends_on": [], "priority": "high|medium|low"}}]
 
 Rules:
-- Only invoke agents that are relevant to the query.
-- Set depends_on if one task needs another's output (e.g. attribution_bottleneck depends on detect_anomalies).
-- For "dashboard" mode, invoke observability + cost + cicd at minimum.
-- For "alert" mode, invoke observability first, then infra or db as needed.
-- For simple factual questions with no data needed, return an empty array [].
-- Keep parameters as an object with keys relevant to the task_type.
-- For any task that needs repo analysis, set parameters.repo to the repo name from context if available.
+- Only invoke relevant agents.
+- For dependencies, set depends_on if a task needs another's output.
+- For dashboard mode: invoke observability + cost + cicd.
+- For alert mode: invoke observability first, then infra/db as needed.
 
 Respond with JSON array only."""
 
         raw = await bedrock_client.invoke(
             prompt=prompt,
-            model_id=settings.bedrock_fast_model_id,
+            model_id=settings.get_agent_model_id("planner", use_fast_path=True),
             system_prompt=_ROUTING_SYSTEM,
+            thinking_budget=1200,
         )
 
         cleaned = _strip_fences(raw).strip()
@@ -522,35 +535,51 @@ Respond with JSON array only."""
             for ins in r.insights
         ]
 
+        agent_data = [
+            {
+                "agent": r.agent_type.value,
+                "status": r.status.value,
+                "error": r.error_message,
+                "data": r.data,
+            }
+            for r in responses
+        ]
+
         failed = [r for r in responses if r.status in (ResponseStatus.FAILED, ResponseStatus.TIMEOUT)]
         failed_text = (
             "\n".join(f"- {r.agent_type.value}: {r.error_message}" for r in failed)
             if failed else "All agents completed successfully."
         )
 
-        prompt = f"""You are an SRE AI assistant responding to an engineering team at an Indian startup.
+        prompt = f"""You are an SRE AI assistant. Synthesise findings from {len(responses)} agents.
 
 ## Original Query
 {query}
 
-## Findings from {len(responses)} agents ({sum(len(r.insights) for r in responses)} total insights)
-{json.dumps(all_insights, indent=2, default=str)[:6000]}
+## Key Findings ({sum(len(r.insights) for r in responses)} insights)
+{json.dumps(all_insights, indent=2, default=str)[:4000]}
 
-## Agent Status
+## Status
 {failed_text}
 
-Write a clear, concise, actionable response in plain English.
-- Lead with the most urgent finding.
-- Group related issues.
-- Include specific INR cost figures where available (format as ₹X,XXX).
-- End with a prioritised action list (numbered, most urgent first).
-- Be direct — this is for an engineer, not a manager.
-- Maximum 400 words."""
+Write a clear, concise response (max 250 words):
+- Lead with the most urgent finding
+- Group related issues
+- Include specific INR cost figures (format: ₹X,XXX)
+- End with numbered action list (most urgent first)
+- Be direct — this is for an engineer
 
-        return await bedrock_client.invoke(
+Output format:
+<reasoning>brief internal summary in <=80 words</reasoning>
+<final>final user answer</final>"""
+
+        raw = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("planner"),
             system_prompt="You are an expert SRE AI assistant. Be concise and actionable.",
+            thinking_budget=2000,
         )
+        return await self._ensure_final_answer(query, raw)
 
     async def _synthesize(
         self,
@@ -568,11 +597,53 @@ Write a clear, concise, actionable response in plain English.
 
     async def _direct_answer(self, query: str) -> str:
         """Answer a simple factual question directly without agents."""
-        return await bedrock_client.invoke(
-            prompt=f"Answer this question from an SRE team at an Indian startup: {query}",
-            model_id=settings.bedrock_fast_model_id,
-            system_prompt="You are a concise SRE assistant. Be helpful and brief.",
+        raw = await bedrock_client.invoke(
+            prompt=(
+                f"Question: {query}\n\n"
+                "Respond in this exact format:\n"
+                "<reasoning>brief reasoning in <=60 words</reasoning>\n"
+                "<final>direct answer in 2-3 sentences</final>"
+            ),
+            model_id=settings.get_agent_model_id("planner", use_fast_path=True),
+            system_prompt="You are a concise SRE assistant. Never omit the <final> block.",
+            thinking_budget=1000,
         )
+        return await self._ensure_final_answer(query, raw)
+
+    async def _ensure_final_answer(self, query: str, raw: str) -> str:
+        """
+        Guarantee user-facing output always has a non-empty final answer.
+
+        If a model response contains only reasoning without a final answer,
+        run a cheap rewrite pass to derive a final answer from that reasoning.
+        """
+        reasoning, final_text = _split_reasoning_and_final(raw)
+        if final_text.strip():
+            return _compose_reasoning_and_final(reasoning, final_text)
+
+        if not reasoning.strip():
+            return "I could not produce a final answer for this query. Please retry."
+
+        rewrite_prompt = f"""User query:
+{query}
+
+Reasoning notes:
+{reasoning[:2500]}
+
+Write only the final answer for the user in <=120 words. No tags."""
+
+        rewrite = await bedrock_client.invoke(
+            prompt=rewrite_prompt,
+            model_id=settings.get_agent_model_id("planner", use_fast_path=True),
+            system_prompt="Convert notes into a direct final answer. No reasoning, no markup.",
+            thinking_budget=600,
+            max_tokens=300,
+        )
+        _, rewritten_final = _split_reasoning_and_final(rewrite)
+        if not rewritten_final.strip():
+            rewritten_final = rewrite.strip() or "I could not produce a final answer for this query. Please retry."
+
+        return _compose_reasoning_and_final(reasoning, rewritten_final)
 
 
 # Module-level singleton

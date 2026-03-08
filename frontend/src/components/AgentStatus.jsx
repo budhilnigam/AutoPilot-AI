@@ -3,7 +3,7 @@
  *
  * - Shows all 6 agents with live pulsing status indicators.
  * - Polls GET /api/health/detail every 30 seconds for dependency health.
- * - Shows Bedrock, GitHub, and GitHub Poller status badges.
+ * - Shows Bedrock and GitHub status badges.
  */
 
 import React, { useState, useEffect } from 'react'
@@ -14,7 +14,6 @@ const AGENTS = [
   { id: 'db',             label: 'Database',        icon: '🗄️' },
   { id: 'cost',           label: 'Cost',            icon: '💰' },
   { id: 'cicd',           label: 'CI/CD',           icon: '🚀' },
-  { id: 'tool_generator', label: 'Tool Generator',  icon: '🔧' },
 ]
 
 export default function AgentStatus() {
@@ -81,7 +80,6 @@ export default function AgentStatus() {
         <div className="dep-list">
           <DepRow label="Bedrock"       dep={dep('bedrock')} />
           <DepRow label="GitHub"        dep={dep('github')} />
-          <DepRow label="GitHub Poller" dep={dep('github_poller')} />
         </div>
       </section>
 

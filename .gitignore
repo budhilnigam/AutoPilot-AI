@@ -40,3 +40,7 @@ generated_tools/
 build/
 dist/
 *.egg-info/
+
+envn/
+temp/
+batman/

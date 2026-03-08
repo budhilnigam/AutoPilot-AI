@@ -29,6 +29,17 @@ export function useSSEStream() {
   const [isStreaming, setIsStreaming] = useState(false)
   const abortRef = useRef(null)
 
+  function formatClientError(err) {
+    const msg = (err?.message || 'Unknown error').toLowerCase()
+    if (msg.includes('failed to fetch') || msg.includes('network')) {
+      return 'Unable to reach the backend service. Check API server availability and CORS/network settings.'
+    }
+    if (msg.includes('timeout') || msg.includes('504')) {
+      return 'Request timed out before tools/services could finish. Try a narrower query or increase timeout.'
+    }
+    return err?.message || 'An unexpected client error occurred.'
+  }
+
   /** Parse the raw SSE byte stream into discrete events. */
   function* parseSseChunk(buffer, incoming) {
     buffer += incoming
@@ -111,7 +122,7 @@ export function useSSEStream() {
       }
       setMessages(prev => prev.map(m =>
         m.id === aiMsgId
-          ? { ...m, content: `⚠️ ${err.message}`, status: 'error' }
+          ? { ...m, content: `⚠️ ${formatClientError(err)}`, status: 'error' }
           : m,
       ))
     } finally {
@@ -139,15 +150,28 @@ export function useSSEStream() {
           : m,
       ))
     } else if (type === 'done') {
+      const diagnostics = payload.diagnostics || { has_failures: false, summary: '', items: [] }
+      const failureSection = diagnostics.has_failures
+        ? `\n\n---\n**Execution Warnings**\n${diagnostics.summary || 'Some checks could not be completed.'}`
+        : ''
+
       setMessages(prev => prev.map(m =>
         m.id === aiMsgId
-          ? { ...m, content: payload.narrative || '*(No narrative)*', status: 'done', queryId: payload.query_id }
+          ? {
+              ...m,
+              content: (payload.narrative || '*(No narrative)*') + failureSection,
+              status: diagnostics.has_failures ? 'partial' : 'done',
+              queryId: payload.query_id,
+              diagnostics,
+            }
           : m,
       ))
     } else if (type === 'error') {
+      const serverMessage = payload.message || 'An error occurred.'
+      const extra = payload.query_id ? `\n\nQuery ID: \`${payload.query_id}\`` : ''
       setMessages(prev => prev.map(m =>
         m.id === aiMsgId
-          ? { ...m, content: `⚠️ ${payload.message || 'An error occurred.'}`, status: 'error' }
+          ? { ...m, content: `⚠️ ${serverMessage}${extra}`, status: 'error' }
           : m,
       ))
     }

@@ -12,8 +12,8 @@ Startup sequence:
   2. Mount all route routers.
   3. Set up CORS for the React frontend (localhost:5173 / localhost:3000).
   4. Register global exception handlers for consistent JSON error responses.
-  5. On startup event: start GitHub poller (if token configured).
-  6. On shutdown event: stop GitHub poller and clean up resources.
+    5. On startup event: log readiness details.
+    6. On shutdown event: clean up resources.
 
 OpenAPI docs are available at /docs (Swagger UI) and /redoc.
 """
@@ -52,8 +52,8 @@ async def lifespan(app: FastAPI):
     """
     Application lifespan manager.
 
-    startup:  start the GitHub poller background task (if token configured)
-    shutdown: stop the GitHub poller and log a clean exit
+    startup:  log service startup context
+    shutdown: log a clean exit
     """
     # ── Startup ──────────────────────────────────────────────────────────
     logger.info(
@@ -63,25 +63,12 @@ async def lifespan(app: FastAPI):
         model=settings.bedrock_model_id,
     )
 
-    from autopilot_ai.services.github_poller import github_poller  # noqa: PLC0415
-
-    if settings.github_token:
-        # Repos are registered via the environment or added later via admin API.
-        # If GITHUB_MONITORED_REPOS env var is set (comma-separated), wire them up.
-        import os  # noqa: PLC0415
-        repos_env = os.getenv("GITHUB_MONITORED_REPOS", "")
-        for repo in [r.strip() for r in repos_env.split(",") if r.strip()]:
-            github_poller.add_repo(repo)
-
-        await github_poller.start()
-        logger.info("github_poller_started_at_startup", repos=list(github_poller._repos.keys()))
-    else:
-        logger.info("github_poller_skipped_no_token")
+    # Temporarily disabled: GitHub poller startup.
+    logger.info("github_poller_temporarily_disabled")
 
     yield  # application runs
 
     # ── Shutdown ──────────────────────────────────────────────────────────
-    await github_poller.stop()
     logger.info("autopilot_shutdown_complete")
 
 

@@ -202,6 +202,7 @@ Respond with JSON only."""
 
         raw = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("infra"),
             system_prompt="You are an infrastructure optimization AI. Respond only with valid JSON.",
         )
 
@@ -210,7 +211,7 @@ Respond with JSON only."""
             task,
             insights=insights,
             data={"has_multistage": has_multistage, "has_apt_clean": has_apt_clean},
-            model_used=settings.bedrock_model_id,
+            model_used=settings.get_agent_model_id("infra"),
         )
 
     # ── DETECT_DRIFT ──────────────────────────────────────────────────────
@@ -298,6 +299,7 @@ Respond with JSON only."""
 
         raw = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("infra"),
             system_prompt="You are an infrastructure drift analysis AI. Respond only with valid JSON.",
         )
 
@@ -306,7 +308,7 @@ Respond with JSON only."""
             task,
             insights=insights,
             data={"drift_detected": len(insights) > 0},
-            model_used=settings.bedrock_model_id,
+            model_used=settings.get_agent_model_id("infra"),
         )
 
     # ── ANALYZE_WORKER_SIZING ─────────────────────────────────────────────
@@ -394,6 +396,7 @@ Respond with JSON only."""
 
         raw = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("infra"),
             system_prompt="You are an SRE capacity planning AI. Respond only with valid JSON.",
         )
 
@@ -405,5 +408,5 @@ Respond with JSON only."""
                 "saturation_note": saturation_note,
                 "current_capacity_per_min": round(current_capacity, 1),
             },
-            model_used=settings.bedrock_model_id,
+            model_used=settings.get_agent_model_id("infra"),
         )

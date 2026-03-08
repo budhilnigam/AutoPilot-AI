@@ -22,11 +22,10 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import shlex
+import subprocess
 from functools import partial
 from typing import TYPE_CHECKING, Any, Type, TypeVar
-
-import boto3
-from botocore.exceptions import ClientError
 
 from autopilot_ai.core.config import settings
 from autopilot_ai.core.exceptions import (
@@ -37,6 +36,7 @@ from autopilot_ai.core.exceptions import (
 )
 from autopilot_ai.core.logging import get_logger
 from autopilot_ai.core.retry import CircuitBreaker, with_retry
+from autopilot_ai.integrations.aws.tool import aws_api
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
@@ -50,17 +50,8 @@ T = TypeVar("T", bound="BaseModel")
 _bedrock_circuit_breaker = CircuitBreaker(name="bedrock")
 
 
-def _make_client() -> Any:
-    """Build a boto3 bedrock-runtime client from config."""
-    kwargs: dict[str, Any] = {"region_name": settings.aws_region}
-    if settings.aws_access_key_id and settings.aws_secret_access_key:
-        kwargs["aws_access_key_id"] = settings.aws_access_key_id
-        kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
-    elif settings.aws_profile:
-        return boto3.Session(profile_name=settings.aws_profile).client(
-            "bedrock-runtime", **kwargs
-        )
-    return boto3.client("bedrock-runtime", **kwargs)
+def _quote(s: str) -> str:
+    return shlex.quote(s)
 
 
 class BedrockClient:
@@ -76,7 +67,6 @@ class BedrockClient:
 
     def __init__(self, model_id: str | None = None) -> None:
         self._model_id = model_id or settings.bedrock_model_id
-        self._client = _make_client()
         self._loop: asyncio.AbstractEventLoop | None = None
 
     # ── Private helpers ────────────────────────────────────────────────────
@@ -88,62 +78,7 @@ class BedrockClient:
         except RuntimeError:
             return asyncio.get_event_loop()
 
-    def _converse_sync(
-        self,
-        messages: list[dict[str, Any]],
-        system_prompt: str | None,
-        model_id: str,
-        max_tokens: int,
-        temperature: float,
-    ) -> str:
-        """
-        Synchronous Bedrock Converse call — runs inside run_in_executor.
-
-        Returns the plain text content of the first assistant message.
-        Raises BedrockThrottlingError, BedrockModelError, or BedrockError.
-        """
-        kwargs: dict[str, Any] = {
-            "modelId": model_id,
-            "messages": messages,
-            "inferenceConfig": {
-                "maxTokens": max_tokens,
-                "temperature": temperature,
-            },
-        }
-        if system_prompt:
-            kwargs["system"] = [{"text": system_prompt}]
-
-        try:
-            response = self._client.converse(**kwargs)
-        except ClientError as e:
-            code = e.response["Error"]["Code"]
-            if code in ("ThrottlingException", "TooManyRequestsException"):
-                raise BedrockThrottlingError(
-                    f"Bedrock throttled: {e}", model_id=model_id
-                ) from e
-            if code in ("ModelErrorException", "ModelNotReadyException"):
-                raise BedrockModelError(
-                    f"Model error: {e}", model_id=model_id
-                ) from e
-            raise BedrockError(f"Bedrock ClientError: {e}", model_id=model_id) from e
-        except Exception as e:
-            raise BedrockError(
-                f"Unexpected Bedrock error: {e}", model_id=model_id
-            ) from e
-
-        # Extract text from Converse response shape
-        output = response.get("output", {})
-        message = output.get("message", {})
-        content_blocks = message.get("content", [])
-        for block in content_blocks:
-            if block.get("type") == "text" or "text" in block:
-                return block["text"]
-
-        raise BedrockModelError(
-            "Bedrock response contained no text content",
-            model_id=model_id,
-            response_keys=list(response.keys()),
-        )
+    
 
     # ── Public API ─────────────────────────────────────────────────────────
 
@@ -155,16 +90,19 @@ class BedrockClient:
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking_budget: int | None = None,
     ) -> str:
         """
         Send a prompt to Bedrock and return the plain-text response.
 
         Args:
-            prompt:        User message content.
-            model_id:      Override the default model.
-            system_prompt: Optional system instruction for the model.
-            max_tokens:    Override Settings.bedrock_max_tokens.
-            temperature:   Override Settings.bedrock_temperature.
+            prompt:         User message content.
+            model_id:       Override the default model.
+            system_prompt:  Optional system instruction for the model.
+            max_tokens:     Override Settings.bedrock_max_tokens.
+            temperature:    Override Settings.bedrock_temperature.
+            thinking_budget: Max tokens for extended thinking (Claude 3.5+ only).
+                           If set, limits the thinking phase to this many tokens.
 
         Returns:
             The assistant's text response as a plain string.
@@ -178,20 +116,100 @@ class BedrockClient:
         logger.debug("bedrock_invoke", model_id=mid, prompt_len=len(prompt))
 
         async with _bedrock_circuit_breaker:
-            loop = self._get_loop()
-            result = await loop.run_in_executor(
-                None,
-                partial(
-                    self._converse_sync,
-                    messages,
-                    system_prompt,
-                    mid,
-                    mt,
-                    temp,
-                ),
-            )
+            # Use boto3 Bedrock Runtime `invoke_model` via aws_api helper.
+            # Build a generic request body; models accept a `messages` list
+            # or a model-specific body — this shape mirrors the test harness.
+            request_body = {
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": mt,
+                "temperature": temp,
+            }
+            if system_prompt:
+                request_body["system"] = system_prompt
+            # For Claude 3.5+, set thinking budget to prevent infinite reasoning loops
+            if thinking_budget is not None:
+                request_body["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": thinking_budget,
+                }
 
-        logger.debug("bedrock_invoke_done", model_id=mid, response_len=len(result))
+            params = {"modelId": mid, "body": json.dumps(request_body)}
+
+            try:
+                resp = await aws_api("bedrock-runtime", "invoke_model", params)
+            except Exception as e:
+                serr = str(e)
+                if "Throttl" in serr or "TooMany" in serr or "Throttling" in serr:
+                    raise BedrockThrottlingError(f"Bedrock throttled: {serr}") from e
+                raise BedrockError(f"Bedrock invocation error: {serr}") from e
+
+            # The boto3 response often contains a streaming `body` key (bytes).
+            body = None
+            if isinstance(resp, dict):
+                body = resp.get("body") or resp.get("Body")
+            # If bytes, decode and parse JSON
+            parsed = None
+            if isinstance(body, (bytes, bytearray)):
+                try:
+                    parsed = json.loads(body.decode("utf-8"))
+                except Exception:
+                    parsed = None
+            elif isinstance(body, str):
+                try:
+                    parsed = json.loads(body)
+                except Exception:
+                    parsed = None
+            elif isinstance(resp, dict) and "body" not in resp and "output" in resp:
+                # Fallback for different shapes
+                parsed = resp.get("output")
+
+            # Robust extraction from a few known response shapes
+            result = None
+            thinking = None
+            if parsed:
+                # common: {'choices':[{'message':{'content': '...'}}]}
+                if isinstance(parsed, dict) and "choices" in parsed:
+                    try:
+                        choice = parsed["choices"][0]
+                        msg = choice.get("message") or {}
+                        if isinstance(msg, dict):
+                            # content may be nested
+                            content = msg.get("content")
+                            if isinstance(content, str):
+                                result = content
+                            elif isinstance(content, dict) and "text" in content:
+                                result = content["text"]
+                            elif isinstance(content, list):
+                                # Extract thinking and text blocks from content array
+                                for block in content:
+                                    if isinstance(block, dict):
+                                        if block.get("type") == "thinking":
+                                            thinking = block.get("thinking")
+                                        elif block.get("type") == "text":
+                                            result = block.get("text")
+                    except Exception:
+                        result = None
+                # other shape: {'output': {'message': {'content': [{'text': '...'}]}}}
+            if result is None and isinstance(resp, dict):
+                output = resp.get("output") or {}
+                message = output.get("message") or {}
+                content_blocks = message.get("content", [])
+                for block in content_blocks:
+                    if isinstance(block, dict):
+                        if block.get("type") == "thinking":
+                            thinking = block.get("thinking")
+                        elif block.get("type") == "text" or "text" in block:
+                            result = block.get("text")
+                            break
+
+            if not result:
+                raise BedrockModelError(
+                    "Bedrock response contained no text content",
+                    model_id=mid,
+                    response_keys=list(resp.keys()) if isinstance(resp, dict) else [],
+                )
+
+        logger.debug("bedrock_invoke_done", model_id=mid, response_len=len(result), has_thinking=thinking is not None)
         return result
 
     @with_retry(retry_on=(BedrockThrottlingError,))
@@ -289,33 +307,9 @@ class BedrockClient:
         if system_prompt:
             kwargs["system"] = [{"text": system_prompt}]
 
-        loop = self._get_loop()
-
-        def _stream_sync():
-            try:
-                return self._client.converse_stream(**kwargs)
-            except ClientError as e:
-                code = e.response["Error"]["Code"]
-                if code in ("ThrottlingException", "TooManyRequestsException"):
-                    raise BedrockThrottlingError(
-                        f"Bedrock throttled: {e}", model_id=mid
-                    ) from e
-                raise BedrockError(f"Bedrock stream error: {e}", model_id=mid) from e
-
-        async with _bedrock_circuit_breaker:
-            response = await loop.run_in_executor(None, _stream_sync)
-
-        stream = response.get("stream")
-        if stream is None:
-            # Fallback to non-streaming
-            text = await self.invoke(prompt, model_id=mid, system_prompt=system_prompt)
-            yield text
-            return
-
-        for event in stream:
-            chunk = event.get("contentBlockDelta", {}).get("delta", {}).get("text")
-            if chunk:
-                yield chunk
+        # Streaming is not implemented via CLI; fall back to single invoke
+        text = await self.invoke(prompt, model_id=mid, system_prompt=system_prompt)
+        yield text
 
 
 # Module-level singleton — import and reuse this throughout the application.
