@@ -16,32 +16,32 @@ const severityConfig = {
   critical: {
     icon: AlertTriangle,
     color: 'text-red-600',
-    bgColor: 'bg-red-50',
-    borderColor: 'border-red-200',
+    bgColor: 'bg-red-50 dark:bg-red-950/40',
+    borderColor: 'border-red-200 dark:border-red-900',
   },
   high: {
     icon: AlertCircle,
     color: 'text-orange-600',
-    bgColor: 'bg-orange-50',
-    borderColor: 'border-orange-200',
+    bgColor: 'bg-orange-50 dark:bg-orange-950/40',
+    borderColor: 'border-orange-200 dark:border-orange-900',
   },
   medium: {
     icon: AlertCircle,
     color: 'text-yellow-600',
-    bgColor: 'bg-yellow-50',
-    borderColor: 'border-yellow-200',
+    bgColor: 'bg-yellow-50 dark:bg-yellow-950/40',
+    borderColor: 'border-yellow-200 dark:border-yellow-900',
   },
   low: {
     icon: Info,
     color: 'text-blue-600',
-    bgColor: 'bg-blue-50',
-    borderColor: 'border-blue-200',
+    bgColor: 'bg-blue-50 dark:bg-blue-950/40',
+    borderColor: 'border-blue-200 dark:border-blue-900',
   },
   info: {
     icon: Info,
-    color: 'text-gray-600',
-    bgColor: 'bg-gray-50',
-    borderColor: 'border-gray-200',
+    color: 'text-slate-600 dark:text-slate-300',
+    bgColor: 'bg-slate-50 dark:bg-slate-800/80',
+    borderColor: 'border-slate-200 dark:border-slate-700',
   },
 }
 
@@ -133,48 +133,48 @@ function LiveAlertsPanel() {
     const Icon = cfg.icon
 
     return (
-      <div className={`p-4 border rounded-lg ${cfg.bgColor} ${cfg.borderColor} transition-all hover:shadow-md`}>
+      <div className={`rounded-lg border p-4 transition-all hover:shadow-md ${cfg.bgColor} ${cfg.borderColor}`}>
         <div className="flex items-start justify-between">
           <div className="flex items-start space-x-3 flex-1">
             <Icon className={`w-5 h-5 ${cfg.color} mt-0.5 flex-shrink-0`} />
 
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between">
-                <h4 className="text-sm font-semibold text-gray-900">{alert.title || 'Alert'}</h4>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{alert.title || 'Alert'}</h4>
                 <button
                   onClick={() => dismissAlert(alert.id)}
-                  className="ml-2 p-1 hover:bg-gray-200 rounded transition-colors"
+                  className="ml-2 rounded p-1 transition-colors hover:bg-slate-200 dark:hover:bg-slate-700"
                   title="Dismiss"
                 >
-                  <X className="w-4 h-4 text-gray-500" />
+                  <X className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                 </button>
               </div>
 
-              <p className="text-sm text-gray-700 mt-1">{alert.message || 'No additional details provided.'}</p>
+              <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">{alert.message || 'No additional details provided.'}</p>
 
               {alert.recommendation && (
-                <div className="mt-2 p-2 bg-white rounded border border-gray-200">
-                  <p className="text-xs text-gray-600">
+                <div className="mt-2 rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900/70">
+                  <p className="text-xs text-slate-600 dark:text-slate-300">
                     <span className="font-medium">Recommendation:</span> {alert.recommendation}
                   </p>
                 </div>
               )}
 
               {alert.costImpact && (
-                <div className="mt-2 flex items-center text-xs text-gray-600">
+                <div className="mt-2 flex items-center text-xs text-slate-600 dark:text-slate-300">
                   <DollarSign className="w-3 h-3 mr-1" />
                   {alert.costImpact}
                 </div>
               )}
 
-              <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+              <div className="mt-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                 <span>{alert.source || 'Unknown source'}</span>
                 <span>{formatDistanceToNow(alert.timestamp, { addSuffix: true })}</span>
               </div>
 
               {alert.commit && (
-                <div className="mt-1 text-xs text-gray-500">
-                  Commit: <code className="px-1 bg-gray-200 rounded">{alert.commit}</code>
+                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Commit: <code className="rounded bg-slate-200 px-1 dark:bg-slate-700">{alert.commit}</code>
                 </div>
               )}
             </div>
@@ -185,17 +185,17 @@ function LiveAlertsPanel() {
   }
 
   return (
-    <div className="p-4 h-full flex flex-col">
+    <div className="flex h-full flex-col p-4">
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-bold text-gray-900 flex items-center">
+          <h2 className="flex items-center text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">
             <Bell className="w-5 h-5 mr-2" />
             Live Alerts
           </h2>
 
           <div className="flex items-center space-x-2">
             <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-gray-400'}`} />
-            <span className="text-xs text-gray-600">
+            <span className="text-xs text-slate-600 dark:text-slate-300">
               {connected ? 'Connected' : 'Disconnected'}
             </span>
           </div>
@@ -207,7 +207,7 @@ function LiveAlertsPanel() {
             className={`px-3 py-1 text-xs rounded-full transition-colors ${
               filter === 'all'
                 ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
             }`}
           >
             All ({alerts.length})
@@ -217,7 +217,7 @@ function LiveAlertsPanel() {
             className={`px-3 py-1 text-xs rounded-full transition-colors ${
               filter === 'critical'
                 ? 'bg-red-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
             }`}
           >
             Critical ({severityCount('critical')})
@@ -227,7 +227,7 @@ function LiveAlertsPanel() {
             className={`px-3 py-1 text-xs rounded-full transition-colors ${
               filter === 'high'
                 ? 'bg-orange-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
             }`}
           >
             High ({severityCount('high')})
@@ -237,7 +237,7 @@ function LiveAlertsPanel() {
             className={`px-3 py-1 text-xs rounded-full transition-colors ${
               filter === 'medium'
                 ? 'bg-yellow-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
             }`}
           >
             Medium ({severityCount('medium')})
@@ -249,9 +249,9 @@ function LiveAlertsPanel() {
         {filteredAlerts.length === 0 ? (
           <div className="h-full flex items-center justify-center text-center p-6">
             <div>
-              <Activity className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-sm text-gray-600">No live alerts received yet.</p>
-              <p className="text-xs text-gray-500 mt-1">Only real-time backend alerts are shown.</p>
+              <Activity className="mx-auto mb-2 h-8 w-8 text-slate-400 dark:text-slate-500" />
+              <p className="text-sm text-slate-600 dark:text-slate-300">No live alerts received yet.</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Only real-time backend alerts are shown.</p>
             </div>
           </div>
         ) : (
