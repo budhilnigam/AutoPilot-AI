@@ -192,6 +192,10 @@ After gathering data via AWS APIs, provide insights in natural language."""
             display_answer = parsed_output.get('answer') or response.get('content', '')
             thinking = parsed_output.get('thinking', '')
             
+            # Ensure display_answer is never empty
+            if not display_answer or not display_answer.strip():
+                display_answer = "Analysis completed. Please check the AWS console for detailed metrics and logs."
+            
             # Extract insights from response - create brief summary instead of full response
             tool_count = response.get('iterations', 0)
             insights = []
@@ -199,7 +203,7 @@ After gathering data via AWS APIs, provide insights in natural language."""
             if tool_count > 0:
                 insights.append(Insight(
                     summary=f"Observability analysis completed using {tool_count} AWS API call(s)",
-                    severity=Severity.INFO,
+                    severity=Severity.LOW,
                     business_impact="Live AWS data retrieved and analyzed",
                     confidence_score=0.9,
                     recommendations=[

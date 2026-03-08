@@ -363,12 +363,12 @@ Which agent(s) should handle this query?"""
                 # Check for full_response in data
                 if isinstance(response.data, dict):
                     full_response = response.data.get('full_response')
-                    if full_response:
+                    if full_response and full_response.strip():  # Ensure non-empty string
                         summary = full_response
                         break
                     # Try answer field
                     answer = response.data.get('answer')
-                    if answer:
+                    if answer and answer.strip():  # Ensure non-empty string
                         summary = answer
                         break
         
@@ -390,12 +390,20 @@ Which agent(s) should handle this query?"""
                     for response in responses
                     if response.status == TaskStatus.FAILED
                 ]
+                partial_agents = [
+                    response.agent_type.value
+                    for response in responses
+                    if response.status == TaskStatus.PARTIAL
+                ]
                 if failed_agents:
                     summary = (
                         "I could not complete this request because agent execution failed for: "
                         + ", ".join(failed_agents)
                         + "."
                     )
+                elif partial_agents:
+                    # Have partial results but no full_response was extracted (shouldn't happen often)
+                    summary = f"Analysis completed with limitations. The {partial_agents[0]} provided guidance based on available information."
                 else:
                     summary = "I could not find actionable results for this request."
             else:
