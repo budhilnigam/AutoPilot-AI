@@ -46,14 +46,23 @@ from autopilot_ai.services.knowledge_base import knowledge_base
 logger = get_logger(__name__)
 
 
-def _parse_metrics(raw: list[dict[str, Any]]) -> list[MetricData]:
+def _parse_metrics(raw: Any) -> list[MetricData]:
     """Deserialise list of MetricData parameter dicts from a Task."""
+    if not isinstance(raw, list):
+        logger.warning("observability_invalid_metrics_payload", payload_type=type(raw).__name__)
+        return []
+
     result = []
     for item in raw:
+        if not isinstance(item, dict):
+            logger.warning("observability_invalid_metric_item", item_type=type(item).__name__)
+            continue
+
         # Rebuild MetricDataPoint objects from raw dicts
         datapoints = [
             MetricDataPoint(timestamp=dp["timestamp"], value=dp["value"])
             for dp in item.get("datapoints", [])
+            if isinstance(dp, dict) and "timestamp" in dp and "value" in dp
         ]
         result.append(
             MetricData(
@@ -163,7 +172,7 @@ class ObservabilityAgent(BaseAgent):
         Converts raw CloudWatch metric data into semantic Insight objects.
         Validates Property 4: insights include business context, severity, recommendations.
         """
-        raw_metrics: list[dict] = task.parameters.get("metrics", [])  # type: ignore[assignment]
+        raw_metrics = task.parameters.get("metrics", [])
         metrics = _parse_metrics(raw_metrics)
 
         if not metrics:
@@ -232,6 +241,7 @@ Rules:
 
         raw_response = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("observability"),
             system_prompt="You are an SRE AI assistant. Respond only with valid JSON.",
         )
 
@@ -241,7 +251,7 @@ Rules:
             task,
             insights=insights,
             data={"metrics_analyzed": len(metrics), "kb_results": len(kb_results)},
-            model_used=settings.bedrock_model_id,
+            model_used=settings.get_agent_model_id("observability"),
         )
 
     # ── DETECT_ANOMALIES ───────────────────────────────────────────────────
@@ -253,7 +263,7 @@ Rules:
           Phase 2 — Claude provides root cause for detected anomalies
         Validates Property 5.
         """
-        raw_metrics: list[dict] = task.parameters.get("metrics", [])  # type: ignore[assignment]
+        raw_metrics = task.parameters.get("metrics", [])
         sigma_threshold: float = float(
             task.parameters.get("sigma_threshold", settings.anomaly_sigma_threshold)  # type: ignore[arg-type]
         )
@@ -321,6 +331,7 @@ Respond with JSON only."""
 
         raw_response = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("observability"),
             system_prompt="You are an SRE AI assistant. Respond only with valid JSON.",
         )
 
@@ -342,7 +353,7 @@ Respond with JSON only."""
                     for a in anomalies
                 ],
             },
-            model_used=settings.bedrock_model_id,
+            model_used=settings.get_agent_model_id("observability"),
         )
 
     # ── ATTRIBUTE_BOTTLENECK ───────────────────────────────────────────────
@@ -353,19 +364,27 @@ Respond with JSON only."""
         Validates Property 31 (attribution completeness).
         """
         symptom: str = str(task.parameters.get("symptom", "Unknown performance issue"))
-        raw_ts: dict = task.parameters.get("timeseries", {})  # type: ignore[assignment]
+        raw_ts = task.parameters.get("timeseries", {})
+        if not isinstance(raw_ts, dict):
+            logger.warning("observability_invalid_timeseries_payload", payload_type=type(raw_ts).__name__)
+            raw_ts = {}
 
         # Build a readable correlation analysis prompt
         metrics_summary = ""
         if raw_ts:
             for m_dict in raw_ts.get("metrics", []):
+                if not isinstance(m_dict, dict):
+                    continue
                 m = MetricData(**{
                     k: v for k, v in m_dict.items() if k != "datapoints"
                 } | {"datapoints": [
-                    MetricDataPoint(**dp) for dp in m_dict.get("datapoints", [])
+                    MetricDataPoint(**dp)
+                    for dp in m_dict.get("datapoints", [])
+                    if isinstance(dp, dict)
                 ]})
+                mean_text = f"{m.mean:.2f}" if m.mean is not None else "N/A"
                 metrics_summary += (
-                    f"- {m.metric_name}: latest={m.latest_value}, mean={m.mean:.2f if m.mean else 'N/A'}\n"
+                    f"- {m.metric_name}: latest={m.latest_value}, mean={mean_text}\n"
                 )
 
         kb_results = await knowledge_base.query_context(
@@ -410,11 +429,16 @@ Respond with JSON only."""
 
         raw_response = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("observability"),
             system_prompt="You are an SRE AI assistant. Respond only with valid JSON.",
         )
 
         insights = self._parse_insights_from_response(raw_response, InsightCategory.PERFORMANCE)
-        return self._success(task, insights=insights, model_used=settings.bedrock_model_id)
+        return self._success(
+            task,
+            insights=insights,
+            model_used=settings.get_agent_model_id("observability"),
+        )
 
     # ── JSON parsing helper ────────────────────────────────────────────────
 
@@ -440,10 +464,27 @@ Respond with JSON only."""
             logger.warning("observability_parse_error", error=str(e), raw=raw[:200])
             return []
 
+        insights_payload: list[Any]
+        if isinstance(data, dict):
+            candidate = data.get("insights", [])
+            insights_payload = candidate if isinstance(candidate, list) else []
+        elif isinstance(data, list):
+            # Some models return a top-level array instead of {"insights": [...]}.
+            insights_payload = data
+        else:
+            logger.warning(
+                "observability_unexpected_response_type",
+                response_type=type(data).__name__,
+            )
+            return []
+
         insights: list[Insight] = []
         urgency_map = {u.value: u for u in Urgency}
 
-        for item in data.get("insights", []):
+        for item in insights_payload:
+            if not isinstance(item, dict):
+                logger.warning("observability_invalid_insight_item", item_type=type(item).__name__)
+                continue
             try:
                 recs = [
                     Recommendation(
@@ -453,6 +494,7 @@ Respond with JSON only."""
                         expected_benefit=r.get("expected_benefit", "Improved performance"),
                     )
                     for r in item.get("recommendations", [])
+                    if isinstance(r, dict)
                 ]
                 if not recs:
                     recs = [Recommendation(

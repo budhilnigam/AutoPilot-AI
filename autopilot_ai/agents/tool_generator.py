@@ -305,6 +305,7 @@ Respond with ONLY the Python function code — no explanation, no markdown, just
 
         raw = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("tool_generator"),
             system_prompt="You are a Python code generation AI. Output only valid Python code, no markdown.",
         )
 
@@ -396,7 +397,7 @@ Respond with ONLY the Python function code — no explanation, no markdown, just
                 "execution": execution_result,
                 "execution_error": execution_error,
             },
-            model_used=settings.bedrock_model_id,
+            model_used=settings.get_agent_model_id("tool_generator"),
         )
 
     # ── VALIDATE_TOOL ─────────────────────────────────────────────────────

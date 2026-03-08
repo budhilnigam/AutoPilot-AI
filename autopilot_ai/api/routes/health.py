@@ -24,7 +24,6 @@ from pydantic import BaseModel
 
 from autopilot_ai.core.config import settings
 from autopilot_ai.core.logging import get_logger
-from autopilot_ai.services.github_poller import github_poller
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api", tags=["health"])
@@ -213,7 +212,7 @@ async def readiness() -> dict[str, Any]:
 @router.get("/health/detail", response_model=HealthResponse, summary="Detailed dependency status")
 async def detail() -> HealthResponse:
     """
-    Full dependency breakdown including GitHub poller state.
+    Full dependency breakdown for core services.
     Always returns 200 — the per-dependency `healthy` flag tells callers
     what is broken.
     """
@@ -221,14 +220,7 @@ async def detail() -> HealthResponse:
         _check_bedrock(),
         _check_github(),
     )
-    poller_status = DependencyStatus(
-        name="github_poller",
-        healthy=github_poller.is_running,
-        latency_ms=0.0,
-        detail="running" if github_poller.is_running else "stopped",
-    )
-
-    deps = [bedrock_status, github_status, poller_status]
+    deps = [bedrock_status, github_status]
     all_healthy = all(d.healthy for d in deps)
 
     return HealthResponse(

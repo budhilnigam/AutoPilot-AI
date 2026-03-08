@@ -7,8 +7,8 @@ import boto3
 import json
 
 AWS_REGION = "ap-south-1"
-AWS_ACCESS_KEY_ID = "AKIARFRAMVTLJFRO6PUW"
-AWS_SECRET_ACCESS_KEY = "nR8QwgMK83quzIqpaIq04ogPMBLEMXoWmzDpVI8Z"
+AWS_ACCESS_KEY_ID = "ExampleAccessKey" "
+AWS_SECRET_ACCESS_KEY = "ExamopleAccessKey"
 MODEL_ID = "deepseek.v3-v1:0"
 
 client = boto3.client(
@@ -23,17 +23,27 @@ print(f"Region: {AWS_REGION}")
 print("-" * 50)
 
 try:
-    response = client.converse(
-        modelId=MODEL_ID,
-        messages=[
+    # Prepare request body for Invoke API (model-specific format)
+    request_body = json.dumps({
+        "messages": [
             {
                 "role": "user",
-                "content": [{"text": "Reply with exactly: DEEPSEEK_OK"}],
+                "content": "Reply with exactly: DEEPSEEK_OK"
             }
         ],
-        inferenceConfig={"maxTokens": 20, "temperature": 0},
+        "max_tokens": 20,
+        "temperature": 0
+    })
+    
+    # Use invoke_model instead of converse
+    response = client.invoke_model(
+        modelId=MODEL_ID,
+        body=request_body
     )
-    text = response["output"]["message"]["content"][0]["text"]
+    
+    # Parse the response body
+    response_body = json.loads(response['body'].read())
+    text = response_body['choices'][0]['message']['content']
     print(f"SUCCESS — Response: {text}")
 except Exception as e:
     print(f"FAILED — {type(e).__name__}: {e}")

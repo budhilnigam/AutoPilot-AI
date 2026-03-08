@@ -236,6 +236,7 @@ Respond with JSON only."""
 
         raw = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("db"),
             system_prompt="You are a PostgreSQL performance AI. Respond only with valid JSON.",
         )
 
@@ -244,7 +245,7 @@ Respond with JSON only."""
             task,
             insights=insights,
             data={"explain_stats": stats},
-            model_used=settings.bedrock_model_id,
+            model_used=settings.get_agent_model_id("db"),
         )
 
     # ── RECOMMEND_INDICES ─────────────────────────────────────────────────
@@ -306,6 +307,7 @@ Respond with JSON only."""
 
         raw = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("db"),
             system_prompt="You are a PostgreSQL index advisor. Respond only with valid JSON.",
         )
 
@@ -314,7 +316,7 @@ Respond with JSON only."""
             task,
             insights=insights,
             data={"slow_query_count": len(slow_queries)},
-            model_used=settings.bedrock_model_id,
+            model_used=settings.get_agent_model_id("db"),
         )
 
     # ── ANALYZE_REDIS ─────────────────────────────────────────────────────
@@ -399,6 +401,7 @@ Respond with JSON only."""
 
         raw = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("db"),
             system_prompt="You are a Redis performance AI. Respond only with valid JSON.",
         )
 
@@ -413,5 +416,5 @@ Respond with JSON only."""
                 "frag_ratio": frag_ratio,
                 "heuristic_notes": heuristic_notes,
             },
-            model_used=settings.bedrock_model_id,
+            model_used=settings.get_agent_model_id("db"),
         )

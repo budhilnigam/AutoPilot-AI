@@ -35,6 +35,16 @@ class Settings(BaseSettings):
         default="deepseek.v3-v1:0",
         alias="bedrock_haiku_model_id",
     )
+    # Optional per-agent model overrides. If unset, falls back to BEDROCK_MODEL_ID.
+    bedrock_model_observability_id: str | None = Field(default=None)
+    bedrock_model_infra_id: str | None = Field(default=None)
+    bedrock_model_db_id: str | None = Field(default=None)
+    bedrock_model_cost_id: str | None = Field(default=None)
+    bedrock_model_cicd_id: str | None = Field(default=None)
+    bedrock_model_tool_generator_id: str | None = Field(default=None)
+    bedrock_model_planner_id: str | None = Field(default=None)
+    # Fast-path planner override (routing/direct answers). Falls back to BEDROCK_HAIKU_MODEL_ID.
+    bedrock_model_planner_fast_id: str | None = Field(default=None)
     bedrock_max_tokens: int = Field(default=4096)
     bedrock_temperature: float = Field(default=0.1)  # Low for deterministic SRE analysis
 
@@ -107,6 +117,29 @@ class Settings(BaseSettings):
     def usd_to_inr(self, usd: float) -> float:
         """Convert USD amount to INR using configured rate."""
         return round(usd * self.usd_to_inr_rate, 2)
+
+    def get_agent_model_id(self, agent_type: str, use_fast_path: bool = False) -> str:
+        """
+        Resolve the model ID for an agent.
+
+        - Standard path: per-agent override -> BEDROCK_MODEL_ID
+        - Planner fast path: BEDROCK_MODEL_PLANNER_FAST_ID -> BEDROCK_HAIKU_MODEL_ID
+        """
+        agent = agent_type.lower().strip()
+
+        if agent == "planner" and use_fast_path:
+            return self.bedrock_model_planner_fast_id or self.bedrock_fast_model_id
+
+        overrides: dict[str, str | None] = {
+            "observability": self.bedrock_model_observability_id,
+            "infra": self.bedrock_model_infra_id,
+            "db": self.bedrock_model_db_id,
+            "cost": self.bedrock_model_cost_id,
+            "cicd": self.bedrock_model_cicd_id,
+            "tool_generator": self.bedrock_model_tool_generator_id,
+            "planner": self.bedrock_model_planner_id,
+        }
+        return overrides.get(agent) or self.bedrock_model_id
 
     @property
     def bedrock_client_kwargs(self) -> dict:

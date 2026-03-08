@@ -160,7 +160,7 @@ class PlannerAgent(BaseAgent):
                 execution_time_ms=0.0,  # will be overwritten by BaseAgent timer
                 insights=query_response.all_insights,
                 data={"query_response": query_response.model_dump(mode="json")},
-                model_used=settings.bedrock_model_id,
+                model_used=settings.get_agent_model_id("planner"),
             )
 
         if task.task_type == TaskType.SYNTHESIZE_RESPONSES:
@@ -296,7 +296,7 @@ Respond with JSON array only."""
 
         raw = await bedrock_client.invoke(
             prompt=prompt,
-            model_id=settings.bedrock_fast_model_id,
+            model_id=settings.get_agent_model_id("planner", use_fast_path=True),
             system_prompt=_ROUTING_SYSTEM,
         )
 
@@ -549,6 +549,7 @@ Write a clear, concise, actionable response in plain English.
 
         return await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("planner"),
             system_prompt="You are an expert SRE AI assistant. Be concise and actionable.",
         )
 
@@ -570,7 +571,7 @@ Write a clear, concise, actionable response in plain English.
         """Answer a simple factual question directly without agents."""
         return await bedrock_client.invoke(
             prompt=f"Answer this question from an SRE team at an Indian startup: {query}",
-            model_id=settings.bedrock_fast_model_id,
+            model_id=settings.get_agent_model_id("planner", use_fast_path=True),
             system_prompt="You are a concise SRE assistant. Be helpful and brief.",
         )
 

@@ -232,6 +232,7 @@ Respond with JSON only."""
 
         raw = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("cost"),
             system_prompt="You are a FinOps AI. All monetary values must be in INR. Respond only with valid JSON.",
         )
 
@@ -244,7 +245,7 @@ Respond with JSON only."""
                 "inr_by_service": {k: round(v, 2) for k, v in inr_by_service.items()},
                 "daily_inr": daily_inr,
             },
-            model_used=settings.bedrock_model_id,
+            model_used=settings.get_agent_model_id("cost"),
         )
 
     # ── IDENTIFY_OPTIMIZATION ─────────────────────────────────────────────
@@ -326,6 +327,7 @@ Respond with JSON only."""
 
         raw = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("cost"),
             system_prompt="You are a FinOps AI specialising in rightsizing. All monetary values in INR. Respond only with valid JSON.",
         )
 
@@ -337,7 +339,7 @@ Respond with JSON only."""
                 "underutilised_resources": underutilised,
                 "rightsizing_count": len(rightsizing),
             },
-            model_used=settings.bedrock_model_id,
+            model_used=settings.get_agent_model_id("cost"),
         )
 
     # ── FORECAST_COSTS ────────────────────────────────────────────────────
@@ -406,6 +408,7 @@ Respond with JSON only."""
 
         raw = await bedrock_client.invoke(
             prompt=prompt,
+            model_id=settings.get_agent_model_id("cost"),
             system_prompt="You are a FinOps forecasting AI. All monetary values in INR. Respond only with valid JSON.",
         )
 
@@ -419,5 +422,5 @@ Respond with JSON only."""
                 "trend": trend,
                 "avg_daily_inr": round(avg_daily_inr, 2),
             },
-            model_used=settings.bedrock_model_id,
+            model_used=settings.get_agent_model_id("cost"),
         )
