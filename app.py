@@ -66,6 +66,7 @@ class ChatMessage(BaseModel):
 class ChatResponse(BaseModel):
     """Chat response to user"""
     response: str
+    thinking: Optional[str] = None
     insights: List[Dict[str, Any]] = []
     recommendations: List[str] = []
     agent_type: Optional[str] = None
@@ -98,6 +99,7 @@ def _aws_unavailable_chat_response(start_time: datetime, error_message: str) -> 
             "Unable to answer from AWS account data right now because AWS connectivity/authentication failed: "
             f"{error_message}"
         ),
+        thinking=None,
         insights=[],
         recommendations=[],
         agent_type="system",
@@ -399,6 +401,24 @@ async def chat(message: ChatMessage):
             or result.get('content')
         )
 
+        thinking_parts: List[str] = []
+        result_data = result.get('data', {})
+        if isinstance(result_data, dict):
+            for payload in result_data.values():
+                if isinstance(payload, dict):
+                    thought = (payload.get('thinking') or '').strip()
+                    if thought:
+                        thinking_parts.append(thought)
+
+        deduped_thinking = []
+        seen = set()
+        for thought in thinking_parts:
+            if thought not in seen:
+                deduped_thinking.append(thought)
+                seen.add(thought)
+
+        thinking_text = "\n\n".join(deduped_thinking) if deduped_thinking else None
+
         if not response_text and insights:
             insight_summaries = [item.get('summary', '').strip() for item in insights if item.get('summary')]
             if insight_summaries:
@@ -412,6 +432,7 @@ async def chat(message: ChatMessage):
 
         return ChatResponse(
             response=response_text,
+            thinking=thinking_text,
             insights=insights,
             recommendations=list(set(recommendations)),
             agent_type=result.get('agent_type'),

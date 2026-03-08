@@ -12,6 +12,7 @@ import logging
 import statistics
 import time
 import json
+import re
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 
@@ -56,6 +57,45 @@ class ObservabilityAgent:
         self.aws_executor = get_aws_executor(config.AWS_REGION)
         
         logger.info("Observability Agent initialized with dynamic AWS API executor")
+
+    @staticmethod
+    def _parse_model_output(raw_content: str) -> Dict[str, str]:
+        """
+        Split model output into a user-safe answer and optional reasoning text.
+
+        Some Bedrock models may emit internal protocol/tool text markers during tool use.
+        This method extracts <reasoning> blocks for explicit UI display and removes
+        transport markers from the final answer shown to end users.
+        """
+        text = (raw_content or "").strip()
+        if not text:
+            return {"answer": "", "thinking": ""}
+
+        reasoning_blocks = [
+            block.strip()
+            for block in re.findall(r"<reasoning>([\s\S]*?)</reasoning>", text, flags=re.IGNORECASE)
+            if block and block.strip()
+        ]
+
+        answer = re.sub(r"<reasoning>[\s\S]*?</reasoning>", "", text, flags=re.IGNORECASE).strip()
+
+        # Remove transport tokens that should never be shown directly to users.
+        answer = re.sub(r"<\|[^>]+\|>", "", answer)
+        answer = re.sub(r"\s+to=functions\.[^\n\r]*", "", answer)
+
+        # If protocol marker leaks inline, keep content before it.
+        protocol_markers = ["<|start|>", "<|channel|>", "<|message|>"]
+        for marker in protocol_markers:
+            if marker in answer:
+                answer = answer.split(marker, 1)[0].strip()
+
+        # Normalize blank lines while preserving readable paragraph breaks.
+        answer = re.sub(r"\n{3,}", "\n\n", answer).strip()
+
+        return {
+            "answer": answer,
+            "thinking": "\n\n".join(reasoning_blocks).strip(),
+        }
     
     def analyze_with_dynamic_tools(
         self,
@@ -143,14 +183,19 @@ After gathering data via AWS APIs, provide insights in natural language."""
                 tools=tools,
                 tool_executor=execute_tool,
                 max_iterations=5,
+                max_output_tokens=1200,
                 temperature=0.0,
                 use_haiku=False  # Use Sonnet for better reasoning
             )
+
+            parsed_output = self._parse_model_output(response.get('content', ''))
+            display_answer = parsed_output.get('answer') or response.get('content', '')
+            thinking = parsed_output.get('thinking', '')
             
             # Extract insights from response
             insights = [
                 Insight(
-                    summary=response['content'][:200] if len(response['content']) > 200 else response['content'],
+                    summary=display_answer,
                     severity=Severity.LOW,
                     business_impact=f"Query answered using {response.get('iterations', 0)} tool calls",
                     confidence_score=0.8,
@@ -168,7 +213,9 @@ After gathering data via AWS APIs, provide insights in natural language."""
                 status=TaskStatus.SUCCESS,
                 insights=insights,
                 data={
-                    'full_response': response['content'],
+                    'full_response': display_answer,
+                    'raw_model_response': response.get('content', ''),
+                    'thinking': thinking,
                     'tool_iterations': response.get('iterations', 0),
                     'tokens_used': response.get('usage', {})
                 },
@@ -216,7 +263,7 @@ Provide actionable observability guidance and next checks."""
                     status=TaskStatus.SUCCESS,
                     insights=[
                         Insight(
-                            summary=fallback_text[:400],
+                            summary=fallback_text,
                             severity=Severity.MEDIUM,
                             business_impact="Returned best-effort guidance because dynamic tool execution failed",
                             confidence_score=0.55,

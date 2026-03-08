@@ -76,6 +76,7 @@ function ChatbotPanel() {
         id: Date.now() + 1,
         type: 'bot',
         content: response.data.response,
+        thinking: response.data.thinking,
         insights: response.data.insights,
         recommendations: response.data.recommendations,
         agentType: response.data.agent_type,
@@ -135,6 +136,17 @@ function ChatbotPanel() {
                 : 'bg-blue-600 text-white'
             }`}>
               <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+
+              {message.thinking && (
+                <details className="mt-3 rounded border border-gray-200 bg-gray-50">
+                  <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-gray-700">
+                    Thinking
+                  </summary>
+                  <div className="border-t border-gray-200 px-3 py-2">
+                    <p className="text-xs whitespace-pre-wrap text-gray-700">{message.thinking}</p>
+                  </div>
+                </details>
+              )}
               
               {/* Insights */}
               {message.insights && message.insights.length > 0 && (

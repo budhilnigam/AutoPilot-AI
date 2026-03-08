@@ -342,6 +342,7 @@ class BedrockClient:
         tools: List[Dict[str, Any]],
         tool_executor: callable,
         max_iterations: int = 5,
+        max_output_tokens: int = 1200,
         temperature: float = 0.0,
         use_haiku: bool = False,
     ) -> Dict[str, Any]:
@@ -359,6 +360,7 @@ class BedrockClient:
             tools: List of tool definitions (Anthropic tool format)
             tool_executor: Callable that executes tools. Signature: (tool_name, tool_input) -> result
             max_iterations: Maximum tool use iterations to prevent infinite loops
+            max_output_tokens: Maximum tokens in each model response for tool loop iterations
             temperature: Sampling temperature
             use_haiku: Use Haiku model (faster) instead of Sonnet
             
@@ -406,7 +408,7 @@ class BedrockClient:
                             {"role": "system", "content": system_prompt},
                             *messages,
                         ],
-                        "max_completion_tokens": 4096,
+                        "max_completion_tokens": max_output_tokens,
                         "temperature": temperature,
                         "tools": openai_tools,
                         "tool_choice": "auto",
@@ -414,7 +416,7 @@ class BedrockClient:
                 else:
                     request_body = {
                         "anthropic_version": "bedrock-2023-05-31",
-                        "max_tokens": 4096,
+                        "max_tokens": max_output_tokens,
                         "temperature": temperature,
                         "system": system_prompt,
                         "messages": messages,
