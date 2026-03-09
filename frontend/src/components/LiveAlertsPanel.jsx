@@ -185,7 +185,7 @@ function LiveAlertsPanel() {
   }
 
   return (
-    <div className="flex h-full flex-col p-4">
+    <div className="flex flex-col p-4">
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2">
           <h2 className="flex items-center text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">

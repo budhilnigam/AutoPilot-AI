@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import rehypeSanitize from 'rehype-sanitize'
+import { formatCostImpact, enhanceTextWithInr } from '../utils/currencyUtils'
 import { 
   Send, 
   Loader2, 
@@ -13,7 +14,8 @@ import {
   TrendingUp,
   AlertTriangle,
   Lightbulb,
-  Brain
+  Brain,
+  DollarSign
 } from 'lucide-react'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -24,6 +26,47 @@ const severityColors = {
   medium: 'bg-yellow-100 border-yellow-300 text-yellow-800 dark:bg-yellow-950/50 dark:border-yellow-800 dark:text-yellow-200',
   low: 'bg-blue-100 border-blue-300 text-blue-800 dark:bg-blue-950/50 dark:border-blue-800 dark:text-blue-200',
   info: 'bg-gray-100 border-gray-300 text-gray-800 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200',
+}
+
+// Cost Impact Display Component - Shows INR costs prominently
+const CostImpactDisplay = ({ costImpact }) => {
+  if (!costImpact) return null
+  
+  const formatted = formatCostImpact(costImpact)
+  if (!formatted) return null
+  
+  return (
+    <div className="mt-3 rounded-lg border border-green-300 bg-green-50 p-3 dark:border-green-800 dark:bg-green-950/30">
+      <div className="flex items-center mb-2">
+        <DollarSign className="w-4 h-4 mr-2 text-green-700 dark:text-green-400" />
+        <span className="text-sm font-semibold text-green-800 dark:text-green-200">Cost Impact (₹)</span>
+      </div>
+      <div className="space-y-1 text-sm text-green-900 dark:text-green-100">
+        {formatted.current && (
+          <div>Current: <span className="font-semibold">{formatted.current}</span></div>
+        )}
+        {formatted.proposed && (
+          <div>Proposed: <span className="font-semibold">{formatted.proposed}</span></div>
+        )}
+        {formatted.savings && (
+          <div className="font-bold">
+            💰 Savings: <span className="text-green-600 dark:text-green-300 text-lg">{formatted.savings}</span>
+            {formatted.savingsPercent && (
+              <span className="ml-2 text-xs">({formatted.savingsPercent}%)</span>
+            )}
+          </div>
+        )}
+        {formatted.monthlySavings && !formatted.savings && (
+          <div className="font-bold">
+            💰 Monthly Savings: <span className="text-green-600 dark:text-green-300 text-lg">{formatted.monthlySavings}</span>
+          </div>
+        )}
+        {formatted.annualSavings && (
+          <div className="text-xs opacity-90">Annual: {formatted.annualSavings}</div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // Markdown Renderer Component
@@ -61,7 +104,7 @@ const MarkdownRenderer = ({ content, className = '' }) => {
   )
 }
 
-function ChatbotPanel() {
+function ChatbotPanel({ queuedPrompt, onPromptConsumed, onAgentActivity, awsConnected = true, awsMessage = '' }) {
   const [messages, setMessages] = useState([])
   const [inputMessage, setInputMessage] = useState('')
   const [loading, setLoading] = useState(false)
@@ -86,6 +129,19 @@ function ChatbotPanel() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  useEffect(() => {
+    if (!awsConnected) {
+      return
+    }
+
+    if (queuedPrompt && queuedPrompt.trim()) {
+      sendMessage(queuedPrompt)
+      if (onPromptConsumed) {
+        onPromptConsumed()
+      }
+    }
+  }, [queuedPrompt, awsConnected])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -139,17 +195,37 @@ function ChatbotPanel() {
         recommendations: response.data.recommendations,
         agentType: response.data.agent_type,
         executionTime: response.data.execution_time_ms,
+        awsContext: response.data.aws_context,
         timestamp: new Date(),
       }
 
       setMessages(prev => [...prev, botMessage])
+
+      if (onAgentActivity) {
+        const savingsEntry = (botMessage.insights || []).find((insight) => insight.cost_impact)
+        const costHint = savingsEntry?.cost_impact?.monthly_savings
+          ? `₹${savingsEntry.cost_impact.monthly_savings}`
+          : undefined
+
+        onAgentActivity({
+          id: botMessage.id,
+          prompt: userMessage,
+          agentType: botMessage.agentType,
+          executionTime: botMessage.executionTime,
+          insightCount: botMessage.insights?.length || 0,
+          recommendations: botMessage.recommendations || [],
+          awsContext: botMessage.awsContext,
+          costHint,
+          timestamp: new Date().toISOString(),
+        })
+      }
     } catch (error) {
       console.error('Chat error:', error)
       
       const errorMessage = {
         id: Date.now() + 1,
         type: 'bot',
-        content: 'Sorry, I encountered an error processing your request. Please try again.',
+        content: error?.response?.data?.detail || 'Sorry, I encountered an error processing your request. Please try again.',
         error: true,
         timestamp: new Date(),
       }
@@ -235,22 +311,32 @@ function ChatbotPanel() {
               {message.insights && message.insights.length > 0 && (
                 <div className="mt-3 space-y-2">
                   {message.insights.map((insight, idx) => (
-                    <div 
-                      key={idx} 
-                      className={`p-3 rounded border ${severityColors[insight.severity] || severityColors.info}`}
-                    >
-                      <div className="flex items-start">
-                        <AlertTriangle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{insight.summary}</p>
-                          <p className="text-xs mt-1 opacity-90">{insight.business_impact}</p>
-                          {insight.confidence_score && (
-                            <p className="text-xs mt-1 opacity-75">
-                              Confidence: {(insight.confidence_score * 100).toFixed(0)}%
-                            </p>
-                          )}
+                      <div key={idx}>
+                        <div 
+                          className={`p-3 rounded border ${severityColors[insight.severity] || severityColors.info}`}
+                        >
+                          <div className="flex items-start">
+                            <AlertTriangle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                              <p className="font-medium text-sm">{insight.summary}</p>
+                              <p className="text-xs mt-1 opacity-90">{insight.business_impact}</p>
+                              {insight.confidence_score && (
+                                <p className="text-xs mt-1 opacity-75">
+                                  Confidence: {(insight.confidence_score * 100).toFixed(0)}%
+                                </p>
+                              )}
+
+                              <details className="mt-2 rounded border border-slate-300 bg-white/70 dark:border-slate-700 dark:bg-slate-900/50">
+                                <summary className="cursor-pointer px-2 py-1 text-xs font-medium">Evidence</summary>
+                                <div className="border-t border-slate-200 px-2 py-2 text-[11px] text-slate-600 dark:border-slate-700 dark:text-slate-300">
+                                  <pre className="overflow-x-auto whitespace-pre-wrap">{JSON.stringify(insight, null, 2)}</pre>
+                                </div>
+                              </details>
+                            </div>
                         </div>
                       </div>
+                        {/* Cost Impact - prominently displayed */}
+                        {insight.cost_impact && <CostImpactDisplay costImpact={insight.cost_impact} />}
                     </div>
                   ))}
                 </div>
@@ -281,6 +367,7 @@ function ChatbotPanel() {
                   )}
                 </div>
               )}
+
             </div>
 
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -351,16 +438,22 @@ function ChatbotPanel() {
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             placeholder="Ask me anything about your infrastructure..."
+            disabled={!awsConnected}
             className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-400"
           />
           <button
             type="submit"
-            disabled={loading || !inputMessage.trim()}
+            disabled={loading || !inputMessage.trim() || !awsConnected}
             className="flex items-center rounded-lg bg-blue-600 px-6 py-3 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Send className="w-5 h-5" />
           </button>
         </form>
+        {!awsConnected && (
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+            {awsMessage || 'AWS is not connected. Connect an AWS account in Account Settings to use chat and operations.'}
+          </p>
+        )}
       </div>
     </div>
   )
