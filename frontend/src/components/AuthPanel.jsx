@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
 import axios from 'axios'
-import { LockKeyhole, Mail, Sparkles } from 'lucide-react'
+import { LockKeyhole, Mail } from 'lucide-react'
 import { Button } from './ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
+import { Card, CardContent, CardDescription, CardHeader } from './ui/card'
 import { Input } from './ui/input'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -33,15 +33,23 @@ function AuthPanel({ onAuthenticated }) {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_20%_20%,#67e8f9_0%,transparent_45%),radial-gradient(circle_at_80%_10%,#fda4af_0%,transparent_40%),linear-gradient(135deg,#f8fafc_0%,#e2e8f0_55%,#ecfeff_100%)] px-4 py-10 dark:bg-[radial-gradient(circle_at_20%_20%,#0e7490_0%,transparent_45%),radial-gradient(circle_at_80%_10%,#9f1239_0%,transparent_40%),linear-gradient(135deg,#020617_0%,#0f172a_55%,#082f49_100%)]">
       <Card className="w-full max-w-md animate-fade-up">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-xl">
-            <img src="/autopilot-ai-icon.png" alt="AutoPilot AI" className="h-5 w-5" />
-          </CardTitle>
-          <CardDescription>
-            Sign in to continue. AWS connection is mandatory for core analysis and operations.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          <CardHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <img src="/autopilot-ai-icon.png" alt="AutoPilot AI" className="h-8 w-8" />
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">AutoPilot AI</h1>
+            </div>
+            <p className="text-lg font-semibold text-slate-700 dark:text-slate-300">
+              {mode === 'login' 
+                ? 'Multi-Agent SRE Control Center' 
+                : 'Join the Autonomous DevOps Revolution'}
+            </p>
+            <CardDescription className="mt-3 text-base">
+              {mode === 'login'
+                ? 'Sign in to your SRE copilot and manage your AWS infrastructure with AI-powered insights, cost optimization, and intelligent automation.'
+                : 'Create your account to unlock cost optimization, infrastructure automation, and intelligent observability across your AWS environment.'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
           <form onSubmit={submit} className="space-y-3">
             <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Email</label>
             <div className="relative">
