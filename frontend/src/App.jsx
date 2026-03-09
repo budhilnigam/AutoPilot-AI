@@ -383,7 +383,7 @@ function App() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="rounded-xl bg-white/15 p-2 backdrop-blur-sm">
-                <Activity className="h-6 w-6" />
+                <img src="/autopilot-ai-icon.png" alt="AutoPilot AI" className="h-6 w-6" />
               </div>
               <div>
                 <h1 className="text-xl font-bold tracking-tight md:text-2xl">AutoPilot AI</h1>

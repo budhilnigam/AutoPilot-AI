@@ -35,8 +35,7 @@ function AuthPanel({ onAuthenticated }) {
       <Card className="w-full max-w-md animate-fade-up">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl">
-            <Sparkles className="h-5 w-5 text-cyan-500" />
-            AutoPilot AI
+            <img src="/autopilot-ai-icon.png" alt="AutoPilot AI" className="h-5 w-5" />
           </CardTitle>
           <CardDescription>
             Sign in to continue. AWS connection is mandatory for core analysis and operations.
