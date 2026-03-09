@@ -64,6 +64,37 @@ class GitHubService:
         resolved_owner = _clean(owner) or _clean(self.repo_owner)
         resolved_repo = _clean(repo) or _clean(self.repo_name)
 
+        if resolved_owner and resolved_repo:
+            return resolved_owner, resolved_repo
+
+        # Fallback: choose a reachable repository when defaults are incomplete.
+        if self.is_configured():
+            try:
+                candidates = self.client._make_request(
+                    'GET',
+                    '/user/repos',
+                    params={'per_page': 50, 'sort': 'updated'}
+                )
+                if isinstance(candidates, list) and candidates:
+                    if resolved_owner:
+                        owner_filtered = [
+                            item for item in candidates
+                            if isinstance(item, dict) and ((item.get('owner') or {}).get('login') == resolved_owner)
+                        ]
+                        candidates = owner_filtered or candidates
+
+                    selected = candidates[0] if isinstance(candidates[0], dict) else None
+                    full_name = (selected or {}).get('full_name')
+                    if full_name and '/' in full_name:
+                        fallback_owner, fallback_repo = full_name.split('/', 1)
+                        logger.info(
+                            f"Auto-resolved repository target to {fallback_owner}/{fallback_repo} "
+                            "because owner/repo defaults were incomplete"
+                        )
+                        return fallback_owner, fallback_repo
+            except Exception as e:
+                logger.warning(f"Automatic repository resolution failed: {e}")
+
         if not resolved_owner or not resolved_repo:
             return None
 
@@ -96,6 +127,9 @@ class GitHubService:
                     'private': r.get('private', False),
                     'default_branch': r.get('default_branch'),
                     'updated_at': r.get('updated_at'),
+                    'stargazers_count': r.get('stargazers_count', 0),
+                    'forks_count': r.get('forks_count', 0),
+                    'language': r.get('language'),
                 }
                 for r in repos[:limit]
             ]

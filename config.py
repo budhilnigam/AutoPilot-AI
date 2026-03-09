@@ -65,6 +65,9 @@ class Config:
     GITHUB_TOKEN: Optional[str] = os.getenv('GITHUB_TOKEN')
     GITHUB_REPO_OWNER: Optional[str] = os.getenv('GITHUB_REPO_OWNER')
     GITHUB_REPO_NAME: Optional[str] = os.getenv('GITHUB_REPO_NAME')
+    GITHUB_OAUTH_CLIENT_ID: Optional[str] = os.getenv('GITHUB_OAUTH_CLIENT_ID')
+    GITHUB_OAUTH_CLIENT_SECRET: Optional[str] = os.getenv('GITHUB_OAUTH_CLIENT_SECRET')
+    GITHUB_OAUTH_REDIRECT_URI: Optional[str] = os.getenv('GITHUB_OAUTH_REDIRECT_URI')
     
     # ========== CloudWatch Settings ==========
     CLOUDWATCH_LOG_GROUP: Optional[str] = os.getenv('CLOUDWATCH_LOG_GROUP')

@@ -202,6 +202,91 @@ class ObservabilityAgent:
             }
         return build
 
+    @staticmethod
+    def _extract_top_n_from_query(query: str, default: int = 10, minimum: int = 1, maximum: int = 100) -> int:
+        """Extract requested list size from natural language like 'top 10 repos'."""
+        text = (query or "").lower()
+        match = re.search(r"(?:top|first|last)\s+(\d{1,3})", text)
+        if not match:
+            match = re.search(r"\b(\d{1,3})\s+(?:repo|repos|repositories)\b", text)
+        if not match:
+            return default
+        try:
+            value = int(match.group(1))
+        except (TypeError, ValueError):
+            return default
+        return max(minimum, min(maximum, value))
+
+    @staticmethod
+    def _is_my_github_repos_query(query: str) -> bool:
+        """Detect explicit requests to list repositories belonging to the authenticated user."""
+        text = (query or "").lower()
+        has_github = "github" in text
+        has_repo_term = any(term in text for term in [" repo", "repos", "repository", "repositories"])
+        has_ownership = any(term in text for term in [" of mine", "my ", "mine", "i own", "owned by me"])
+        has_list_intent = any(term in text for term in ["list", "show", "give", "fetch", "top"])
+        return has_github and has_repo_term and has_ownership and has_list_intent
+
+    def _build_my_repos_response(self, user_query: str) -> Optional[AgentResponse]:
+        """Handle direct 'list my GitHub repos' prompts without relying on model tool selection."""
+        if not self._is_my_github_repos_query(user_query):
+            return None
+
+        limit = self._extract_top_n_from_query(user_query, default=10, minimum=1, maximum=50)
+        repos = self._execute_github_operation("get_accessible_repos", {"limit": limit})
+
+        if isinstance(repos, dict) and repos.get("error"):
+            message = repos.get("error", "GitHub query failed")
+            content = f"I could not fetch your GitHub repositories: {message}"
+        elif not isinstance(repos, list) or not repos:
+            content = "I could not find any repositories accessible with the current GitHub token."
+        else:
+            ranked = sorted(
+                repos,
+                key=lambda item: (
+                    item.get("stargazers_count", 0),
+                    item.get("forks_count", 0),
+                    item.get("updated_at") or ""
+                ),
+                reverse=True,
+            )[:limit]
+
+            lines = [f"Top {len(ranked)} GitHub repositories you can access:"]
+            for idx, repo in enumerate(ranked, start=1):
+                full_name = repo.get("full_name") or repo.get("name") or "unknown"
+                stars = repo.get("stargazers_count", 0)
+                forks = repo.get("forks_count", 0)
+                language = repo.get("language") or "n/a"
+                visibility = "private" if repo.get("private") else "public"
+                lines.append(
+                    f"{idx}. {full_name} ({visibility}) - ⭐ {stars} | forks {forks} | language {language}"
+                )
+            content = "\n".join(lines)
+
+        return AgentResponse(
+            agent_type=self.agent_type,
+            task_id="github-repos-shortcut",
+            status=TaskStatus.SUCCESS,
+            insights=[
+                Insight(
+                    summary="GitHub repositories retrieved via deterministic repo-list handler",
+                    severity=Severity.LOW,
+                    business_impact="Improves reliability for repo listing prompts",
+                    confidence_score=0.95,
+                    recommendations=[
+                        "Ask for repository-specific build, commit, or workflow analysis by mentioning owner/repo.",
+                    ],
+                )
+            ],
+            data={
+                "full_response": content,
+                "answer": content,
+                "thinking": "",
+                "tool_iterations": 1,
+            },
+            execution_time_ms=0.0,
+        )
+
 
     @staticmethod
     def _parse_model_output(raw_content: str) -> Dict[str, str]:
@@ -272,6 +357,12 @@ class ObservabilityAgent:
         context = context or {}
         
         try:
+            direct_github_response = self._build_my_repos_response(user_query)
+            if direct_github_response is not None:
+                direct_github_response.task_id = task_id
+                direct_github_response.execution_time_ms = (time.time() - start_time) * 1000
+                return direct_github_response
+
             # Prepare system prompt for the LLM
             system_prompt = """You are an expert AWS observability agent analyzing infrastructure and CI/CD pipelines.
 

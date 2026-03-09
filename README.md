@@ -1,14 +1,32 @@
 # AutoPilot AI – Multi-Agent AI SRE System
 
-**Production-grade, multi-agent AI SRE system built on Amazon Bedrock for Indian startups.**
+**Production-grade multi-agent AI SRE system with dynamic AWS SDK execution for Indian startups.**
 
 ## 🌟 Overview
 
-AutoPilot AI transforms raw DevOps telemetry into semantic insights, providing:
+AutoPilot AI is your AI SRE team in a box – not just metrics, but business insights in ₹.
 
-- **Semantic Insights**: Transforms "CPU: 78%" into "Your Celery worker pool is mis-sized relative to Redis throughput causing job starvation. Recommend worker pool = 12. Projected cost reduction = ₹18,300/month."
+**Key Innovation**: **Dynamic AWS SDK Tool Calling** - Claude Sonnet decides which AWS APIs to call based on your natural language queries. No static rules, no hardcoded API calls – truly adaptive infrastructure intelligence.
+
+### What Makes Us Different
+
+**Traditional Monitoring:**
+- Shows "CPU: 78%"
+- You investigate manually
+- Static alert thresholds
+- Costs in USD
+
+**AutoPilot AI:**
+- "Your worker pool (2 tasks) can't keep up with Redis queue (1,247 jobs). Scale to 4 tasks. Cost: +₹1,992/mo, Saves: ₹16,308/mo (818% ROI). Migration script attached."
+- AI investigates automatically
+- Dynamic AWS SDK execution – Claude decides what to query
+- All costs in ₹ with Indian pricing
+
+### Core Capabilities
+
+- **Semantic Insights**: Business context, not just metrics
 - **Root Cause Analysis**: Automated incident analysis with confidence scores
-- **Cost Optimization**: AWS cost analysis with recommendations in INR
+- **Cost Optimization**: AWS cost analysis in ₹ (INR) with ROI calculations
 - **Predictive Alerts**: Predict saturation and failures before they occur
 - **CI/CD Monitoring**: Build time regression detection
 - **Database Optimization**: Query plan analysis and index recommendations
@@ -38,6 +56,39 @@ AutoPilot AI transforms raw DevOps telemetry into semantic insights, providing:
 - Bedrock Agents SDK support for tool calling
 - Pre-defined tools: CloudWatch metrics, ECS services, RDS instances
 - Extensible tool framework for custom integrations
+
+## 🔥 Dynamic AWS SDK Tool Calling
+
+Unlike traditional monitoring tools with static API calls, AutoPilot AI uses **dynamic AWS SDK execution**:
+
+1. **You Query in Natural Language**:
+    - "Show me ECS services with performance issues"
+    - "Why did my costs spike this month?"
+    - "Analyze my database performance"
+
+2. **Claude Sonnet Decides**:
+    - Reads the query
+    - Determines which AWS services to query
+    - Chooses appropriate operations (list, describe, get-metrics, etc.)
+    - Executes tools dynamically via `aws_api_executor`
+
+3. **Real-Time AWS Queries**:
+    ```python
+    # Claude autonomously decides to call:
+    ecs.list_services(cluster='production')
+    cloudwatch.get_metric_statistics(MetricName='CPUUtilization')
+    github_query(operation='get_recent_builds')
+    ```
+
+4. **Semantic Analysis**:
+    - Correlates data across services
+    - Identifies root causes
+    - Calculates cost impact in ₹
+    - Generates actionable recommendations
+
+**Supported AWS Services**: CloudWatch, ECS, EC2, RDS, Lambda, S3, Cost Explorer, CloudWatch Logs, and more – any AWS SDK operation can be dynamically invoked.
+
+**GitHub Integration**: Also queries GitHub repositories for CI/CD data, build trends, and commit history.
 
 ## 🏗️ Architecture
 
@@ -152,6 +203,11 @@ BEDROCK_MODEL_ID=openai.gpt-oss-20b-1:0
 # Optional: Bedrock Agents for tool calling
 BEDROCK_AGENT_ID=your-agent-id
 BEDROCK_AGENT_ALIAS_ID=your-alias-id
+
+# GitHub OAuth (recommended over PAT)
+GITHUB_OAUTH_CLIENT_ID=your_github_oauth_client_id
+GITHUB_OAUTH_CLIENT_SECRET=your_github_oauth_client_secret
+GITHUB_OAUTH_REDIRECT_URI=http://localhost:8000/api/auth/connect/github/oauth/callback
 ```
 
 ### Running
@@ -163,6 +219,11 @@ BEDROCK_AGENT_ALIAS_ID=your-alias-id
 ```
 
 #### Option 2: Manual Start
+
+Run auth DB migrations once before first startup:
+```bash
+python scripts/migrate_auth_db.py
+```
 
 **Terminal 1 - Backend:**
 ```bash
