@@ -355,7 +355,23 @@ class ObservabilityAgent:
         """
         start_time = time.time()
         context = context or {}
-        
+
+        # Use per-user AWS credentials if provided in context
+        creds = context.get('aws_credentials')
+        if creds:
+            self.bedrock_client = self.bedrock_client.with_credentials(
+                access_key_id=creds['access_key_id'],
+                secret_access_key=creds['secret_access_key'],
+                session_token=creds.get('session_token'),
+                region=creds.get('region'),
+            )
+            self.aws_executor = self.aws_executor.with_credentials(
+                access_key_id=creds['access_key_id'],
+                secret_access_key=creds['secret_access_key'],
+                session_token=creds.get('session_token'),
+                region=creds.get('region'),
+            )
+
         try:
             direct_github_response = self._build_my_repos_response(user_query)
             if direct_github_response is not None:

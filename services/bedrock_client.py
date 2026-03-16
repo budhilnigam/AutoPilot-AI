@@ -66,6 +66,29 @@ class BedrockClient:
             logger.error(f"Failed to initialize Bedrock client: {e}")
             raise
 
+    def with_credentials(self, access_key_id: str, secret_access_key: str,
+                         session_token: str = None, region: str = None) -> 'BedrockClient':
+        """Return a new BedrockClient using the provided credentials."""
+        instance = BedrockClient.__new__(BedrockClient)
+        instance.region_name = region or self.region_name
+        instance.model_id = self.model_id
+        instance.haiku_model_id = self.haiku_model_id
+        session = boto3.session.Session(
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            aws_session_token=session_token or None,
+            region_name=instance.region_name,
+        )
+        from botocore.config import Config as BotoCoreConfig
+        instance.bedrock_runtime = session.client(
+            service_name='bedrock-runtime',
+            config=BotoCoreConfig(
+                region_name=instance.region_name,
+                retries={'max_attempts': 3, 'mode': 'adaptive'}
+            )
+        )
+        return instance
+
     def _is_openai_model(self, model_id: str) -> bool:
         """Return True when using a Bedrock OpenAI-compatible model."""
         return model_id.startswith('openai.')

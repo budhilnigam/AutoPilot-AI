@@ -66,6 +66,26 @@ class AWSAPIExecutor:
                 raise
         
         return self._client_cache[service_name]
+
+    def with_credentials(self, access_key_id: str, secret_access_key: str,
+                         session_token: str = None, region: str = None) -> 'AWSAPIExecutor':
+        """Return a new AWSAPIExecutor instance using the provided credentials."""
+        instance = AWSAPIExecutor(region_name=region or self.region_name)
+        session = boto3.session.Session(
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            aws_session_token=session_token or None,
+            region_name=region or self.region_name,
+        )
+        # Override _get_client to use this session
+        def _get_credentialed_client(service_name: str) -> Any:
+            if service_name not in instance._client_cache:
+                instance._client_cache[service_name] = session.client(
+                    service_name, config=instance.config
+                )
+            return instance._client_cache[service_name]
+        instance._get_client = _get_credentialed_client
+        return instance
     
     def execute(
         self,

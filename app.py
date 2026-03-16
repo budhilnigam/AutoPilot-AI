@@ -757,6 +757,13 @@ async def chat(message: ChatMessage, user: Dict[str, Any] = Depends(_get_current
 
         merged_context = dict(message.context or {})
         merged_context.update(aws_context)
+        # Pass user credentials so agents can make credentialed AWS/Bedrock calls
+        merged_context['aws_credentials'] = {
+            'access_key_id': aws_connection['access_key_id'],
+            'secret_access_key': aws_connection['secret_access_key'],
+            'session_token': aws_connection.get('session_token'),
+            'region': aws_connection.get('region') or config.AWS_REGION,
+        }
         
         # Process query through Planner Agent
         result = autopilot_api.query(message.message, merged_context)
